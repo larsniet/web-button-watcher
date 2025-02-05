@@ -19,6 +19,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.pem
+*.p12
 
 # Virtual Environment
 venv/
