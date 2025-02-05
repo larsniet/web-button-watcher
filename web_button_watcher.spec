@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
+from PyInstaller.utils.hooks import collect_dynamic_libs
 
 block_cipher = None
+
+# Set target architecture for macOS
+if sys.platform == 'darwin':
+    target_arch = 'universal2'
+else:
+    target_arch = None
 
 a = Analysis(
     ['src/web_button_watcher/__init__.py'],
     pathex=[],
-    binaries=[],
+    binaries=collect_dynamic_libs('selenium'),
     datas=[
         ('src/web_button_watcher/interface/*.py', 'web_button_watcher/interface'),
         ('src/web_button_watcher/core/*.py', 'web_button_watcher/core'),
@@ -47,7 +54,7 @@ if sys.platform == 'darwin':
         upx=True,
         console=False,
         disable_windowed_traceback=False,
-        target_arch=None,
+        target_arch=target_arch,
         codesign_identity=None,
         entitlements_file=None,
     )
@@ -91,7 +98,7 @@ else:
         runtime_tmpdir=None,
         console=False,
         disable_windowed_traceback=False,
-        target_arch=None,
+        target_arch=target_arch,
         codesign_identity=None,
         entitlements_file=None,
     ) 

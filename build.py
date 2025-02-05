@@ -36,13 +36,8 @@ def build_app():
         'PyInstaller',
         '--clean',
         '--noconfirm',
+        'web_button_watcher.spec'
     ]
-    
-    # Add platform-specific options
-    if platform == 'darwin':
-        cmd.extend(['--target-arch', 'universal2'])
-    
-    cmd.append('web_button_watcher.spec')
     
     # Run build
     subprocess.run(cmd, check=True)
