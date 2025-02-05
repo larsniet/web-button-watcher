@@ -14,9 +14,24 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Wait for test workflow to complete
+  wait-for-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - id: check
+        run: |
+          # Check if it's a major/minor version
+          if [[ ! "${{ github.ref }}" =~ \.0\. ]]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
   build-and-release:
-    # Additional check to ensure we only run on major/minor version changes
-    if: ${{ !contains(github.ref, '.0.') }}
+    needs: wait-for-tests
+    if: needs.wait-for-tests.outputs.should_release == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -55,12 +70,6 @@ jobs:
           tag_version = os.environ['GITHUB_REF'].split('/')[-1][1:]  # Remove 'v' prefix
           print(f"Package version: {__version__}")
           print(f"Tag version: {tag_version}")
-
-          # Verify it's a major or minor version change
-          version_parts = tag_version.split('.')
-          if len(version_parts) == 3 and version_parts[2] != '0':
-              print(f"Error: This workflow should only run on major or minor version changes")
-              sys.exit(1)
 
           # Set output for later steps
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:

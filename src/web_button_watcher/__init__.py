@@ -4,9 +4,8 @@ import tkinter as tk
 import sys
 from .interface.gui import MonitorGUI
 
-# Single source of truth for version
-__version__ = "0.1.2"
-__author__ = "Lars"
+__version__ = "0.1.3"
+__author__ = "larsniet"
 __license__ = "MIT"
 
 def main():

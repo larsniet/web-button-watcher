@@ -44,7 +44,7 @@ setup(
             "web-button-watch=web_button_watcher.interface.gui:main",
         ]
     },
-    author="Lars",
+    author="larsniet",
     author_email="lars@lvdn.nl",
     description="A tool for monitoring and automatically interacting with buttons on web pages",
     long_description=read_file("README.md"),
