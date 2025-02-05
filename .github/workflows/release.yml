@@ -3,7 +3,9 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      # Only match tags like v1.0 or v2.1, not patch versions like v1.0.1
+      - "v[0-9]+.[0-9]"
+      - "v[0-9]+.[0-9].[0]"
 
 permissions:
   contents: write
@@ -13,6 +15,8 @@ permissions:
 
 jobs:
   build-and-release:
+    # Additional check to ensure we only run on major/minor version changes
+    if: ${{ !contains(github.ref, '.0.') }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -44,12 +48,19 @@ jobs:
         run: |
           import os
           import sys
+          import re
           from web_button_watcher import __version__
 
           # Get tag version from GitHub ref
           tag_version = os.environ['GITHUB_REF'].split('/')[-1][1:]  # Remove 'v' prefix
           print(f"Package version: {__version__}")
           print(f"Tag version: {tag_version}")
+
+          # Verify it's a major or minor version change
+          version_parts = tag_version.split('.')
+          if len(version_parts) == 3 and version_parts[2] != '0':
+              print(f"Error: This workflow should only run on major or minor version changes")
+              sys.exit(1)
 
           # Set output for later steps
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
