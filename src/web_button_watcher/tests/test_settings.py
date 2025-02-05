@@ -4,8 +4,38 @@ import pytest
 import os
 import json
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, MagicMock, AsyncMock
+import asyncio
 from ..utils.settings import Settings
+
+@pytest.fixture(autouse=True)
+def mock_telegram_notifier():
+    """Mock the TelegramNotifier to prevent any async operations."""
+    mock_loop = MagicMock()
+    mock_loop.is_closed.return_value = False
+    mock_loop.run_until_complete = MagicMock()
+    
+    with patch('asyncio.new_event_loop', return_value=mock_loop), \
+         patch('asyncio.get_event_loop', return_value=mock_loop), \
+         patch('asyncio.set_event_loop'), \
+         patch('web_button_watcher.utils.notifier.TelegramClient') as mock_client:
+        
+        # Create a mock client instance
+        client_instance = MagicMock()
+        client_instance.start = AsyncMock()
+        client_instance.send_message = AsyncMock()
+        client_instance.disconnect = AsyncMock()
+        mock_client.return_value = client_instance
+        
+        # Mock the TelegramNotifier class
+        with patch('web_button_watcher.utils.notifier.TelegramNotifier') as mock_notifier:
+            instance = MagicMock()
+            instance.loop = mock_loop
+            instance.cleanup = AsyncMock()
+            instance._init_client = AsyncMock()
+            mock_notifier.return_value = instance
+            
+            yield mock_notifier
 
 @pytest.fixture
 def settings():
@@ -36,10 +66,10 @@ class TestSettings:
             'url': 'https://test.com',
             'selected_buttons': [1, 2],
             'telegram': {
-                'api_id': 'test_id',
+                'api_id': '12345',  # Changed to valid integer string
                 'api_hash': 'test_hash',
                 'bot_token': 'test_token',
-                'chat_id': 'test_chat'
+                'chat_id': '67890'  # Changed to valid integer string
             }
         }
         mock_json_load.return_value = test_settings
@@ -50,7 +80,7 @@ class TestSettings:
         assert loaded_settings['refresh_interval'] == 2
         assert loaded_settings['url'] == 'https://test.com'
         assert loaded_settings['selected_buttons'] == [1, 2]
-        assert loaded_settings['telegram']['api_id'] == 'test_id'
+        assert loaded_settings['telegram']['api_id'] == '12345'
 
     def test_get_set_settings(self, settings):
         """Test getting and setting individual settings."""
@@ -72,10 +102,10 @@ class TestSettings:
     def test_telegram_settings(self, settings):
         """Test Telegram-specific settings."""
         test_telegram = {
-            'api_id': 'new_id',
-            'api_hash': 'new_hash',
-            'bot_token': 'new_token',
-            'chat_id': 'new_chat'
+            'api_id': '12345',  # Changed to valid integer string
+            'api_hash': 'test_hash',
+            'bot_token': 'test_token',
+            'chat_id': '67890'  # Changed to valid integer string
         }
         
         # Test updating Telegram settings
