@@ -1,14 +1,20 @@
 from setuptools import setup, find_packages
 import re
 from pathlib import Path
+import io
 
 def get_version():
     """Get version from __init__.py"""
-    init_file = Path("src/web_button_watcher/__init__.py").read_text()
+    init_file = Path("src/web_button_watcher/__init__.py").read_text(encoding='utf-8')
     version_match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", init_file)
     if not version_match:
         raise RuntimeError("Version not found")
     return version_match.group(1)
+
+# Read README with proper encoding
+def read_file(filename):
+    with io.open(filename, encoding='utf-8') as f:
+        return f.read()
 
 setup(
     name="web-button-watcher",
@@ -41,7 +47,7 @@ setup(
     author="Lars",
     author_email="lars@lvdn.nl",
     description="A tool for monitoring and automatically interacting with buttons on web pages",
-    long_description=open("README.md").read(),
+    long_description=read_file("README.md"),
     long_description_content_type="text/markdown",
     keywords="web automation, button monitoring, selenium, chrome, telegram",
     url="https://github.com/larsniet/web-button-watcher",
