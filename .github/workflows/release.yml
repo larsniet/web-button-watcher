@@ -13,21 +13,14 @@ jobs:
   wait-for-checks:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for tests
+      - name: Wait for all checks
         uses: lewagon/wait-on-check-action@v1.3.1
         with:
           ref: ${{ github.ref }}
-          check-name: "test"
+          running-workflow-name: "Release"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-
-      - name: Wait for build
-        uses: lewagon/wait-on-check-action@v1.3.1
-        with:
-          ref: ${{ github.ref }}
-          check-name: "build"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
+          wait-interval: 20
+          allowed-conclusions: success,skipped
 
   release:
     needs: wait-for-checks
