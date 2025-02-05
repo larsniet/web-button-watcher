@@ -4,9 +4,7 @@ on:
   push:
     branches: [main]
     tags:
-      # Only match tags like v1.0 or v2.1, not patch versions like v1.0.1
-      - "v[0-9]+.[0-9]"
-      - "v[0-9]+.[0-9].[0]"
+      - "v*"
   pull_request:
     branches: [main]
 
