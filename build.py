@@ -36,8 +36,13 @@ def build_app():
         'PyInstaller',
         '--clean',
         '--noconfirm',
-        'web_button_watcher.spec'
     ]
+    
+    # Add platform-specific options
+    if platform == 'darwin':
+        cmd.extend(['--target-arch', 'universal2'])
+    
+    cmd.append('web_button_watcher.spec')
     
     # Run build
     subprocess.run(cmd, check=True)
@@ -48,15 +53,26 @@ def build_app():
         # For macOS, create a DMG
         app_path = dist_dir / 'WebButtonWatcher.app'
         if app_path.exists():
+            # Create temporary directory for DMG contents
+            dmg_dir = dist_dir / 'dmg'
+            dmg_dir.mkdir(exist_ok=True)
+            
+            # Copy .app to DMG directory
+            shutil.copytree(app_path, dmg_dir / 'WebButtonWatcher.app', dirs_exist_ok=True)
+            
+            # Create DMG
             subprocess.run([
                 'hdiutil',
                 'create',
                 '-volname', 'WebButtonWatcher',
-                '-srcfolder', app_path,
+                '-srcfolder', dmg_dir,
                 '-ov',
                 '-format', 'UDZO',
                 dist_dir / 'WebButtonWatcher-macOS.dmg'
             ], check=True)
+            
+            # Clean up temporary directory
+            shutil.rmtree(dmg_dir)
     elif platform == 'win32':
         # For Windows, create a ZIP
         import zipfile
