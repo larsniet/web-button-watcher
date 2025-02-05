@@ -82,5 +82,6 @@ jobs:
         continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          slug: larsniet/web-button-watcher
           file: ./coverage.xml
           fail_ci_if_error: false
