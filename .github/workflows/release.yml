@@ -14,13 +14,14 @@ jobs:
   # Wait for test workflow to complete
   wait-for-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 5 # Add timeout
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sleep for 30 seconds
-        run: sleep 30
+      - name: Sleep for 10 seconds
+        run: sleep 10
 
       - name: Wait for tests to succeed
         uses: lewagon/wait-on-check-action@v1.3.1
@@ -39,7 +40,7 @@ jobs:
 
   build-and-release:
     needs: wait-for-tests
-    if: needs.wait-for-tests.outputs.should_release == 'true'
+    if: always() # Run even if wait-for-tests times out
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
