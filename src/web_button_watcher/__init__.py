@@ -4,7 +4,7 @@ import tkinter as tk
 import sys
 from .interface.gui import MonitorGUI
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 __author__ = "larsniet"
 __license__ = "MIT"
 
