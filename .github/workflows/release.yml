@@ -134,14 +134,18 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
+          # Find the certificate
+          CERT_NAME=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | head -1 | cut -d '"' -f 2)
+          echo "Using certificate: $CERT_NAME"
+
           # Sign the app
-          codesign --force --options runtime --sign "Developer ID Application: $APPLE_TEAM_ID" dist/WebButtonWatcher.app --deep
+          codesign --force --options runtime --sign "$CERT_NAME" dist/WebButtonWatcher.app --deep --verbose
 
           # Create DMG
           hdiutil create -volname "WebButtonWatcher" -srcfolder dist/WebButtonWatcher.app -ov -format UDZO dist/WebButtonWatcher-macOS.dmg
 
           # Sign DMG
-          codesign --force --sign "Developer ID Application: $APPLE_TEAM_ID" dist/WebButtonWatcher-macOS.dmg
+          codesign --force --sign "$CERT_NAME" dist/WebButtonWatcher-macOS.dmg --verbose
 
           # Notarize
           xcrun notarytool submit dist/WebButtonWatcher-macOS.dmg --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
