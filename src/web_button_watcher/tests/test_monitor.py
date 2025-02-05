@@ -1,7 +1,7 @@
 """Tests for the PageMonitor class."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, call
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import WebDriverException
@@ -77,10 +77,18 @@ class TestPageMonitor:
         assert monitor.driver is None
 
     @patch('undetected_chromedriver.Chrome')
-    def test_select_buttons_interactive(self, mock_chrome, monitor):
+    @patch('selenium.webdriver.support.ui.WebDriverWait')
+    @patch('selenium.webdriver.support.expected_conditions')
+    def test_select_buttons_interactive(self, mock_ec, mock_wait, mock_chrome, monitor):
         """Test interactive button selection."""
         mock_driver = MagicMock()
         mock_chrome.return_value = mock_driver
+        monitor.driver = mock_driver
+
+        # Mock WebDriverWait
+        mock_wait_instance = MagicMock()
+        mock_wait.return_value = mock_wait_instance
+        mock_wait_instance.until.return_value = True
 
         # Mock button elements
         button1 = MagicMock()
@@ -89,13 +97,20 @@ class TestPageMonitor:
         button2.text = "BOOK NOW"
         mock_driver.find_elements.return_value = [button1, button2]
 
-        # Mock JavaScript execution for button selection
-        mock_driver.execute_script.side_effect = [
-            None,  # First call (inject CSS)
-            None,  # Second call (initialize selection)
-            True,  # Third call (check selection confirmed)
-            [0, 1],  # Fourth call (get selected buttons)
-        ]
+        # Mock JavaScript execution sequence
+        js_responses = {
+            "return window.selectionConfirmed === true;": True,
+            "return window.selectedButtons;": [0, 1]
+        }
+
+        def mock_execute_script(script, *args):
+            # Return predefined responses for known scripts
+            if script in js_responses:
+                return js_responses[script]
+            # Return None for all other scripts (CSS injection, etc)
+            return None
+
+        mock_driver.execute_script.side_effect = mock_execute_script
 
         selected = monitor.select_buttons_interactive()
         
@@ -103,72 +118,113 @@ class TestPageMonitor:
         assert monitor.button_texts == {0: "GET NOTIFIED", 1: "BOOK NOW"}
 
     @patch('undetected_chromedriver.Chrome')
-    def test_monitor_button_changes(self, mock_chrome, monitor):
+    @patch('selenium.webdriver.support.ui.WebDriverWait')
+    @patch('selenium.webdriver.support.expected_conditions')
+    @patch('time.sleep')
+    def test_monitor_button_changes(self, mock_sleep, mock_ec, mock_wait, mock_chrome, monitor):
         """Test monitoring button changes."""
         mock_driver = MagicMock()
         mock_chrome.return_value = mock_driver
+        monitor.driver = mock_driver
+
+        # Mock WebDriverWait
+        mock_wait_instance = MagicMock()
+        mock_wait.return_value = mock_wait_instance
+        mock_wait_instance.until.return_value = True
 
         # Set up initial state
-        monitor.target_buttons = [0, 1]
-        monitor.button_texts = {0: "GET NOTIFIED", 1: "BOOK NOW"}
-
-        # Mock button elements with changed text
-        button1 = MagicMock()
-        button1.text = "NOTIFY ME"  # Changed from "GET NOTIFIED"
-        button2 = MagicMock()
-        button2.text = "BOOK NOW"  # Unchanged
-        mock_driver.find_elements.return_value = [button1, button2]
-
-        # Start monitoring in a way we can control
+        monitor.target_buttons = [0]  # Only monitor first button
+        monitor.button_texts = {0: "GET NOTIFIED"}
         monitor.is_running = True
-        try:
-            monitor.monitor()
-        except Exception:
-            pass
 
-        # Verify notification was sent for changed button
+        # Mock expected conditions
+        mock_ec.presence_of_all_elements_located.return_value = MagicMock()
+
+        # Mock find_elements to return changed button text
+        button = MagicMock()
+        button.text = "NOTIFY ME"  # Changed from "GET NOTIFIED"
+        mock_driver.find_elements.return_value = [button]
+
+        # Mock sleep to prevent infinite loop
+        mock_sleep.side_effect = lambda x: monitor.stop()
+
+        # Run monitoring
+        monitor.monitor()
+
+        # Verify notification was sent for changed button (note the +1 for 1-based indexing)
         monitor.notifier.notify_button_clicked.assert_called_once_with(1, "NOTIFY ME")
 
-    def test_error_handling(self, monitor, mock_driver):
+    @patch('undetected_chromedriver.Chrome')
+    def test_error_handling(self, mock_chrome, monitor, mock_driver):
         """Test error handling during monitoring."""
+        mock_chrome.return_value = mock_driver
         monitor.driver = mock_driver
         monitor.target_buttons = [0]
         monitor.button_texts = {0: "GET NOTIFIED"}
 
-        # Simulate a WebDriver exception
-        mock_driver.get.side_effect = WebDriverException("Connection lost")
+        # Simulate a WebDriver exception that triggers stop
+        def mock_get(*args):
+            monitor.stop()  # Stop the monitor immediately
+            raise WebDriverException("Connection lost")
+            
+        mock_driver.get.side_effect = mock_get
         
         # Start monitoring
-        monitor.is_running = True
-        try:
-            monitor.monitor()
-        except Exception:
-            pass
+        monitor.monitor()
 
         # Verify cleanup was called
         assert not monitor.is_running
         mock_driver.quit.assert_called_once()
         assert monitor.driver is None
 
-    def test_monitor_without_buttons(self, monitor):
+    @patch('undetected_chromedriver.Chrome')
+    def test_monitor_without_buttons(self, mock_chrome, monitor):
         """Test monitoring without selected buttons."""
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+        monitor.driver = mock_driver
+        
         with pytest.raises(ValueError, match="No buttons selected for monitoring"):
+            monitor.target_buttons = []  # Ensure no buttons are selected
             monitor.monitor()
 
-    @patch('time.sleep', return_value=None)
-    def test_refresh_interval(self, mock_sleep, monitor, mock_driver):
+    @patch('time.sleep')
+    @patch('undetected_chromedriver.Chrome')
+    @patch('selenium.webdriver.support.ui.WebDriverWait')
+    @patch('selenium.webdriver.support.expected_conditions')
+    def test_refresh_interval(self, mock_ec, mock_wait, mock_chrome, mock_sleep, monitor, mock_driver):
         """Test refresh interval timing."""
+        mock_chrome.return_value = mock_driver
         monitor.driver = mock_driver
         monitor.target_buttons = [0]
         monitor.button_texts = {0: "GET NOTIFIED"}
         monitor.refresh_interval = 2
-
-        # Run monitor for a few cycles
         monitor.is_running = True
-        try:
-            monitor.monitor()
-        except Exception:
-            pass
+
+        # Mock WebDriverWait
+        mock_wait_instance = MagicMock()
+        mock_wait.return_value = mock_wait_instance
+        mock_wait_instance.until.return_value = True
+
+        # Mock expected conditions
+        mock_ec.presence_of_all_elements_located.return_value = MagicMock()
+
+        # Mock find_elements to return unchanged button
+        button = MagicMock()
+        button.text = "GET NOTIFIED"  # No change
+        mock_driver.find_elements.return_value = [button]
+
+        # Mock sleep to stop after first interval
+        sleep_calls = []
+        def mock_sleep_func(interval):
+            sleep_calls.append(interval)
+            if len(sleep_calls) >= 2:  # Stop after second sleep call (first is in the loop)
+                monitor.stop()
+
+        mock_sleep.side_effect = mock_sleep_func
+
+        # Run monitor for one iteration
+        monitor.monitor()
 
         # Verify sleep was called with correct interval
-        mock_sleep.assert_called_with(2) 
+        assert 2 in sleep_calls, "Sleep should have been called with interval 2" 
