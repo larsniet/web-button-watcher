@@ -4,11 +4,8 @@ from PyInstaller.utils.hooks import collect_dynamic_libs
 
 block_cipher = None
 
-# Set target architecture for macOS
-if sys.platform == 'darwin':
-    target_arch = 'universal2'
-else:
-    target_arch = None
+# We'll build for native architecture only
+target_arch = None
 
 a = Analysis(
     ['src/web_button_watcher/__init__.py'],
@@ -28,6 +25,7 @@ a = Analysis(
         'telethon',
         'python-dotenv',
         'tkinter',
+        'websockets',  # Add websockets explicitly
     ],
     hookspath=[],
     hooksconfig={},
@@ -54,7 +52,7 @@ if sys.platform == 'darwin':
         upx=True,
         console=False,
         disable_windowed_traceback=False,
-        target_arch=target_arch,
+        target_arch=target_arch,  # Use native architecture
         codesign_identity=None,
         entitlements_file=None,
     )
@@ -73,7 +71,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name='WebButtonWatcher.app',
-        icon=None,  # Add your .icns file here if you have one
+        icon=None,
         bundle_identifier='com.larsniet.webbuttonwatcher',
         info_plist={
             'NSHighResolutionCapable': 'True',
