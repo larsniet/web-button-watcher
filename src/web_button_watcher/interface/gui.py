@@ -71,8 +71,14 @@ class MonitorGUI:
         # Load monitor settings
         self.url_var.set(self.settings.get('url', ''))
         self.refresh_interval_var.set(str(self.settings.get('refresh_interval', 1)))
+        
+        # Convert 0-based indices to 1-based for display
         selected_buttons = self.settings.get('selected_buttons', [])
-        self.buttons_var.set(', '.join(map(str, selected_buttons)) if selected_buttons else 'None')
+        if selected_buttons:
+            button_numbers = [i + 1 for i in selected_buttons]
+            self.buttons_var.set(', '.join(map(str, button_numbers)))
+        else:
+            self.buttons_var.set('None')
         
         # Update button states
         if selected_buttons:
@@ -208,16 +214,19 @@ class MonitorGUI:
                 self.chat_id_var.get()
             )
             
+            # Convert displayed 1-based indices to 0-based for storage
+            selected_buttons = []
+            if self.buttons_var.get() != 'None':
+                selected_buttons = [int(x.strip()) - 1 for x in self.buttons_var.get().split(',')]
+            
             # Update other settings
             self.settings.update({
                 'refresh_interval': float(self.refresh_interval_var.get()),
                 'url': self.url_var.get(),
-                'selected_buttons': [int(x.strip()) for x in self.buttons_var.get().split(',')]
-                if self.buttons_var.get() != 'None' else []
+                'selected_buttons': selected_buttons
             })
             
             self.update_status("Settings saved successfully!")
-            messagebox.showinfo("Success", "Settings saved successfully!")
         except Exception as e:
             self.update_status(f"Error saving settings: {str(e)}")
             messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
@@ -226,12 +235,13 @@ class MonitorGUI:
         """Select buttons to monitor."""
         try:
             url = self.url_var.get()
-            selected = self.controller.select_buttons(url)
+            selected = self.controller.select_buttons(url)  # Returns 0-based indices
             
             if selected:
+                # Convert 0-based indices to 1-based for display
                 button_numbers = [i + 1 for i in selected]
                 self.buttons_var.set(', '.join(map(str, button_numbers)))
-                self.settings.set('selected_buttons', selected)
+                self.settings.set('selected_buttons', selected)  # Store 0-based indices
                 self.start_btn.config(state=tk.NORMAL)
             else:
                 self.buttons_var.set("None")
@@ -258,9 +268,8 @@ class MonitorGUI:
             # Save current settings before starting
             self.save_settings()
             
-            # Get selected buttons
-            selected_buttons = [int(x.strip()) - 1 for x in self.buttons_var.get().split(',')
-                              if x.strip() != 'None']
+            # Get selected buttons (already 0-based from settings)
+            selected_buttons = self.settings.get('selected_buttons', [])
             
             if not selected_buttons:
                 messagebox.showerror("Error", "Please select at least one button to monitor first!")
