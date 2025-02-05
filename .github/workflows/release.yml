@@ -40,14 +40,26 @@ jobs:
 
       - name: Verify Version
         id: verify_version
+        shell: python
         run: |
-          VERSION=$(python -c "from web_button_watcher import __version__; print(__version__)")
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          if [ "$VERSION" != "$TAG_VERSION" ]; then
-            echo "Error: Version mismatch! Tag version ($TAG_VERSION) doesn't match package version ($VERSION)"
-            exit 1
-          fi
+          import os
+          import sys
+          from web_button_watcher import __version__
+
+          # Get tag version from GitHub ref
+          tag_version = os.environ['GITHUB_REF'].split('/')[-1][1:]  # Remove 'v' prefix
+          print(f"Package version: {__version__}")
+          print(f"Tag version: {tag_version}")
+
+          # Set output for later steps
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"version={__version__}\n")
+
+          if __version__ != tag_version:
+              print(f"Error: Version mismatch! Tag version ({tag_version}) doesn't match package version ({__version__})")
+              sys.exit(1)
+
+          print("Version verification successful!")
 
       - name: Build application
         run: python build.py
