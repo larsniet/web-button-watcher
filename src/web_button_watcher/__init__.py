@@ -5,7 +5,7 @@ import sys
 from .interface.gui import MonitorGUI
 
 # Single source of truth for version
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Lars"
 __license__ = "MIT"
 
