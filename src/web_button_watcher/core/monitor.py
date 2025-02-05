@@ -69,6 +69,13 @@ class PageMonitor:
     def cleanup(self):
         """Safely cleanup browser resources."""
         try:
+            # Stop the monitor first
+            self.is_running = False
+            
+            # Wait for monitor thread to finish if it exists
+            if hasattr(self, 'monitor_thread') and self.monitor_thread and self.monitor_thread.is_alive():
+                self.monitor_thread.join()
+            
             if self.driver:
                 try:
                     # Try to close any alert that might be present
@@ -114,11 +121,8 @@ class PageMonitor:
     def highlight_element(self, element, color="yellow"):
         """Highlight an element on the page."""
         try:
-            # Get the actual button (might be inside container)
             self.driver.execute_script("""
-                var targetElement = arguments[0].classList.contains('btn-primary') ? 
-                    arguments[0] : arguments[0].querySelector('.btn-primary');
-                targetElement.style.backgroundColor = arguments[1];
+                arguments[0].style.backgroundColor = arguments[1];
             """, element, color)
         except Exception as e:
             logging.error(f"Failed to highlight element: {e}")
@@ -149,7 +153,7 @@ class PageMonitor:
     
     def get_available_buttons(self):
         """Get list of buttons with 'GET NOTIFIED' text."""
-        buttons = self.driver.find_elements(By.CSS_SELECTOR, "button.btn-primary")
+        buttons = self.driver.find_elements(By.TAG_NAME, "button")
         notify_buttons = []
         notify_count = 1  # Counter just for GET NOTIFIED buttons
         
@@ -185,6 +189,11 @@ class PageMonitor:
         """Allow user to select buttons by clicking them."""
         if not self.driver:
             self.setup_driver()
+            
+        # Find all buttons first
+        buttons = self.driver.find_elements(By.CSS_SELECTOR, "button")
+        if not buttons:
+            raise ValueError("No buttons found on the page")
         
         # Add selection UI styles
         self.driver.execute_script("""
@@ -349,7 +358,7 @@ class PageMonitor:
         
         # Wait for user to confirm selection
         try:
-            WebDriverWait(self.driver, 3600).until(
+            WebDriverWait(self.driver, 10).until(
                 lambda d: d.execute_script("return window.selectionConfirmed === true;")
             )
             

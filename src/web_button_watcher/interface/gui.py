@@ -2,11 +2,7 @@
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-import os
-from dotenv import load_dotenv
 import threading
-import sys
-from pathlib import Path
 
 from .cli import MonitorController
 from ..utils.settings import Settings

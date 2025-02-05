@@ -2,14 +2,12 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import WebDriverException
 
 from ..core.monitor import PageMonitor
-from ..utils.settings import Settings
 from ..interface.cli import MonitorController
 
 @pytest.fixture

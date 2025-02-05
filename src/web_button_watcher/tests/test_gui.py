@@ -2,7 +2,7 @@
 
 import pytest
 import tkinter as tk
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch, MagicMock
 from tkinter import messagebox
 import threading
 from ..interface.gui import MonitorGUI
