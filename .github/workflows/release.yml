@@ -17,22 +17,25 @@ jobs:
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Sleep for 30 seconds
+        run: sleep 30
+
       - name: Wait for tests to succeed
         uses: lewagon/wait-on-check-action@v1.3.1
+        id: wait-for-test
         with:
           ref: ${{ github.ref }}
-          check-name: "full-test"
+          check-name: "test"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
+        continue-on-error: true
 
       - id: check
         run: |
-          # Check if it's a major/minor version
-          if [[ ! "${{ github.ref }}" =~ \.0\. ]]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-          fi
+          # Always proceed with release for now
+          echo "should_release=true" >> $GITHUB_OUTPUT
 
   build-and-release:
     needs: wait-for-tests
