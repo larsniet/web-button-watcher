@@ -7,9 +7,30 @@ on:
 
 permissions:
   contents: write
+  checks: read # Required for waiting on check runs
 
 jobs:
+  wait-for-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for tests
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ github.ref }}
+          check-name: "test"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Wait for build
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ github.ref }}
+          check-name: "build"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
   release:
+    needs: wait-for-checks
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
