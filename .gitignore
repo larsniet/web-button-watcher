@@ -49,3 +49,5 @@ htmlcov/
 # Chrome WebDriver
 chromedriver
 chromedriver.exe 
+
+.DS_Store
