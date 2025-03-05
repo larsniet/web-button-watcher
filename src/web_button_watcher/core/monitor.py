@@ -87,7 +87,7 @@ class PageMonitor:
         
         # Start monitoring
         self.running = True
-        self.button_monitor.monitor()
+        self.button_monitor.start_monitoring()
     
     def monitor(self):
         """Monitor the page for button changes."""
@@ -97,7 +97,7 @@ class PageMonitor:
     def stop(self):
         """Stop monitoring."""
         self.running = False
-        self.button_monitor.stop()
+        self.button_monitor.stop_monitoring()
     
     def cleanup(self):
         """Clean up resources."""
