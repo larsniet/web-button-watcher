@@ -3,16 +3,24 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .cli import MonitorController
-from ..utils.settings import Settings
+from ..utils.settings import SettingsManager
 
 class MonitorGUI:
     def __init__(self, root):
+        logger.debug("MonitorGUI initialization started")
         self.root = root
-        self.settings = Settings()
+        
+        logger.debug("Creating SettingsManager instance")
+        self.settings = SettingsManager()
+        logger.debug("SettingsManager instance created")
         
         # Initialize window
+        logger.debug("Setting up window properties")
         self.root.title("Web Button Watcher")
         window_settings = self.settings.get_window_settings()
         geometry = f"{window_settings['width']}x{window_settings['height']}"
@@ -20,13 +28,20 @@ class MonitorGUI:
             geometry += f"+{window_settings['position_x']}+{window_settings['position_y']}"
         self.root.geometry(geometry)
         
+        # Make window resizable
+        self.root.resizable(True, True)
+        self.root.minsize(500, 700)  # Set minimum size
+        
         # Save window position on close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # Initialize controller
+        logger.debug("Creating MonitorController instance")
         self.controller = MonitorController()
+        logger.debug("MonitorController instance created")
         
         # Create main container with padding
+        logger.debug("Creating main container")
         main_container = ttk.Frame(root, padding="10")
         main_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
@@ -39,7 +54,9 @@ class MonitorGUI:
         # Configure grid weights
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
+        main_container.columnconfigure(0, weight=1)
         main_container.columnconfigure(1, weight=1)
+        main_container.rowconfigure(3, weight=1)  # Make status section expandable
         
         # Load saved settings
         self.load_saved_settings()
@@ -184,7 +201,7 @@ class MonitorGUI:
         status_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
         # Status Text
-        self.status_text = tk.Text(status_frame, height=10, wrap=tk.WORD)
+        self.status_text = tk.Text(status_frame, height=20, wrap=tk.WORD)
         self.status_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Scrollbar
@@ -275,14 +292,16 @@ class MonitorGUI:
             self.start_btn.config(state=tk.DISABLED)
             self.stop_btn.config(state=tk.NORMAL)
             
+            # Set status callback
+            self.controller.set_status_callback(self.update_status)
+            
             # Start monitor in a separate thread
             self.monitor_thread = threading.Thread(
                 target=self.controller.start_monitoring,
                 args=(
                     self.url_var.get(),
                     float(self.refresh_interval_var.get()),
-                    selected_buttons,
-                    self.update_status
+                    selected_buttons
                 )
             )
             self.monitor_thread.daemon = True

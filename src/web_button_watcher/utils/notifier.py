@@ -1,86 +1,76 @@
-"""Telegram notification functionality for Web Button Watcher."""
+"""Notification system for Web Button Watcher."""
 
-from telethon import TelegramClient
-from telethon.sessions import MemorySession
 import logging
-import asyncio
-from .settings import Settings
+import os
+from typing import Optional
+from .settings import SettingsManager
+
+logger = logging.getLogger(__name__)
 
 class TelegramNotifier:
-    def __init__(self):
-        """Initialize settings and credentials."""
-        # Load settings
-        settings = Settings()
-        telegram_settings = settings.get_telegram_settings()
-        
-        # Configure logging
-        logging.basicConfig(level=logging.INFO,
-                          format='%(asctime)s - %(levelname)s - %(message)s')
-        
-        # Get Telegram credentials from settings
-        self.api_id = telegram_settings.get('api_id', '')
-        self.api_hash = telegram_settings.get('api_hash', '')
-        self.bot_token = telegram_settings.get('bot_token', '')
-        chat_id = telegram_settings.get('chat_id', '')
-        
-        # Convert chat_id and api_id to integers
-        try:
-            self.chat_id = int(chat_id) if chat_id else None
-            self.api_id = int(self.api_id) if self.api_id else None
-        except ValueError:
-            logging.error("API_ID and CHAT_ID must be integers")
-            raise ValueError("API_ID and CHAT_ID must be integers")
-        
-        # Validate credentials
-        if not all([self.api_id, self.api_hash, self.bot_token, self.chat_id]):
-            raise ValueError("Missing Telegram credentials. Please configure them in the settings.")
-        
-        logging.info("Checking Telegram credentials:")
-        logging.info(f"API ID present: {'Yes' if self.api_id else 'No'}")
-        logging.info(f"API Hash present: {'Yes' if self.api_hash else 'No'}")
-        logging.info(f"Bot Token present: {'Yes' if self.bot_token else 'No'}")
-        logging.info(f"Chat ID present: {'Yes' if self.chat_id else 'No'}")
-        
-        # Create client but don't start it yet
-        self.client = TelegramClient(MemorySession(), self.api_id, self.api_hash)
-        self.initialized = False
+    """Sends notifications via Telegram."""
     
-    async def initialize(self):
-        """Initialize the Telegram client."""
-        if self.initialized:
-            return
+    def __init__(self, settings_manager=None):
+        """Initialize the Telegram notifier.
         
-        try:
-            await self.client.start(bot_token=self.bot_token)
-            await self.client.send_message(self.chat_id, "🤖 Bot initialized and ready to monitor buttons!")
-            logging.info("Test message sent successfully")
-            logging.info("Telegram notifier initialized successfully")
-            self.initialized = True
-        except Exception as e:
-            logging.error(f"Failed to initialize client: {e}")
-            await self.cleanup()
-            raise
+        Args:
+            settings_manager: Optional settings manager instance.
+                If None, creates a new one.
+        """
+        self.settings_manager = settings_manager or SettingsManager()
+        self.telegram_settings = self.settings_manager.get_telegram_settings()
+        
+        # Check if Telegram settings are configured
+        if not all(self.telegram_settings.values()):
+            logger.warning("Telegram settings not fully configured")
     
-    async def notify_button_clicked(self, button_number, text):
-        """Send notification when a button is clicked."""
-        if not self.initialized:
-            await self.initialize()
+    def send_notification(self, message: str) -> bool:
+        """Send a notification via Telegram.
+        
+        Args:
+            message: The message to send.
             
-        try:
-            message = f"🔔 Button {button_number} changed to: {text}"
-            await self.client.send_message(self.chat_id, message)
-            logging.info(f"Notification sent: {message}")
-            return True
-        except Exception as e:
-            logging.error(f"Failed to send notification: {e}")
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not all(self.telegram_settings.values()):
+            logger.error("Telegram settings not fully configured")
             return False
-    
-    async def cleanup(self):
-        """Cleanup resources."""
-        if hasattr(self, 'client'):
-            try:
-                await self.client.disconnect()
-            except:
-                pass
-            self.client = None
-            self.initialized = False 
+        
+        try:
+            # Import here to avoid dependency if not used
+            import telethon
+            from telethon import TelegramClient
+            
+            api_id = self.telegram_settings['api_id']
+            api_hash = self.telegram_settings['api_hash']
+            bot_token = self.telegram_settings['bot_token']
+            chat_id = self.telegram_settings['chat_id']
+            
+            # Create a temporary session file
+            session_file = "bot_session"
+            
+            # Create and start the client
+            client = TelegramClient(session_file, api_id, api_hash)
+            client.start(bot_token=bot_token)
+            
+            # Send the message
+            client.loop.run_until_complete(
+                client.send_message(chat_id, message)
+            )
+            
+            # Disconnect the client
+            client.disconnect()
+            
+            logger.info(f"Sent Telegram notification: {message[:50]}...")
+            return True
+            
+        except ImportError:
+            logger.error("Telethon package not installed. Cannot send Telegram notifications.")
+            print("\nTo enable Telegram notifications, install the telethon package:")
+            print("pip install telethon")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error sending Telegram notification: {e}")
+            return False 
