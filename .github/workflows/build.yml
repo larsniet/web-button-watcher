@@ -115,7 +115,7 @@ jobs:
           block_cipher = None
           
           a = Analysis(
-              ['webbuttonwatcher/gui.py'],
+              ['webbuttonwatcher/interface/gui.py'],
               pathex=[],
               binaries=[],
               datas=[('LICENSE', '.'), ('resources', 'resources')],
@@ -337,7 +337,7 @@ jobs:
           block_cipher = None
           
           a = Analysis(
-              ['webbuttonwatcher/gui.py'],
+              ['webbuttonwatcher/interface/gui.py'],
               pathex=[],
               binaries=[],
               datas=[('LICENSE', '.'), ('resources', 'resources')],
@@ -675,7 +675,7 @@ jobs:
           
       - name: Build with PyInstaller
         run: |
-          pyinstaller --name=webbuttonwatcher --onefile --add-data="LICENSE:." --add-data="resources:resources" webbuttonwatcher/gui.py
+          pyinstaller --name=webbuttonwatcher --onefile --add-data="LICENSE:." --add-data="resources:resources" webbuttonwatcher/interface/gui.py
           
       - name: Prepare Assets
         run: |

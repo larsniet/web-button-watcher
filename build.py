@@ -66,7 +66,7 @@ def build_exe():
         # Basic PyInstaller command
         spec_cmd = [
             sys.executable, '-m', 'PyInstaller',
-            '--name=WebButtonWatcher',
+            '--name=webbuttonwatcher',  # Use lowercase to match expected spec filename
             '--windowed',  # GUI application
             '--onedir',    # Create a directory with the executable
             '--noupx',     # Don't use UPX (can cause issues)
