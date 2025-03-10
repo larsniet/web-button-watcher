@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 import time
 
-MAIN_SCRIPT = 'src/webbuttonwatcher/interface/gui.py'  # Entry point (updated to gui.py)
+MAIN_SCRIPT = 'webbuttonwatcher/interface/gui.py'  # Entry point (updated to gui.py)
 
 def clean_build():
     """Clean up previous build files."""
