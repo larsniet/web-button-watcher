@@ -9,7 +9,7 @@ from ..utils.settings import Settings
 @pytest.fixture
 def mock_settings():
     """Create a mock settings with valid Telegram credentials."""
-    with patch('web_button_watcher.utils.notifier.Settings') as mock_settings:
+    with patch('webbuttonwatcher.utils.notifier.Settings') as mock_settings:
         settings_instance = Mock()
         settings_instance.get_telegram_settings.return_value = {
             'api_id': '12345',
@@ -23,7 +23,7 @@ def mock_settings():
 @pytest.fixture
 def mock_telegram_client():
     """Create a mock Telegram client."""
-    with patch('web_button_watcher.utils.notifier.TelegramClient') as mock_client:
+    with patch('webbuttonwatcher.utils.notifier.TelegramClient') as mock_client:
         client_instance = MagicMock()
         client_instance.start = AsyncMock()
         client_instance.send_message = AsyncMock()

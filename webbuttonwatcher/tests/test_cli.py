@@ -12,7 +12,7 @@ from ..core.monitor import PageMonitor
 @pytest.fixture
 def mock_settings():
     """Create a mock settings."""
-    with patch('web_button_watcher.interface.cli.Settings') as mock_settings:
+    with patch('webbuttonwatcher.interface.cli.Settings') as mock_settings:
         settings_instance = Mock()
         settings_instance.get_telegram_settings.return_value = {
             'api_id': '12345',
@@ -26,7 +26,7 @@ def mock_settings():
 @pytest.fixture
 def mock_monitor():
     """Create a mock PageMonitor."""
-    with patch('web_button_watcher.interface.cli.PageMonitor') as mock_monitor:
+    with patch('webbuttonwatcher.interface.cli.PageMonitor') as mock_monitor:
         monitor_instance = Mock()
         monitor_instance.select_buttons_interactive.return_value = [0, 1]
         monitor_instance.driver = Mock()
@@ -36,7 +36,7 @@ def mock_monitor():
 @pytest.fixture
 def mock_notifier():
     """Create a mock TelegramNotifier."""
-    with patch('web_button_watcher.interface.cli.TelegramNotifier') as mock_notifier:
+    with patch('webbuttonwatcher.interface.cli.TelegramNotifier') as mock_notifier:
         notifier_instance = Mock()
         mock_notifier.return_value = notifier_instance
         yield notifier_instance
@@ -143,7 +143,7 @@ class TestMonitorController:
         status_callback = Mock()
         
         # Mock TelegramNotifier to avoid initialization issues
-        with patch('web_button_watcher.interface.cli.TelegramNotifier') as mock_notifier:
+        with patch('webbuttonwatcher.interface.cli.TelegramNotifier') as mock_notifier:
             # Start monitoring and expect error
             with pytest.raises(Exception) as exc_info:
                 controller.start_monitoring('https://example.com', 1.0, [0, 1], status_callback)

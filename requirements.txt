@@ -1,13 +1,19 @@
 # Main dependencies
-selenium>=4.18.1
-webdriver-manager>=4.0.1
-undetected-chromedriver>=3.5.5
-telethon>=1.33.1
+selenium>=4.10.0
+webdriver-manager>=4.0.0
+undetected-chromedriver>=3.5.0
+telethon>=1.29.2
 python-dotenv>=1.0.0
 tk>=0.1.0
+pillow==10.1.0
+python-telegram-bot==20.7
+pyqt5==5.15.10
+pyqt5-sip==12.13.0
+PyQtWebEngine>=5.15.0
+websockets>=12.0
 
 # Development dependencies
-pytest>=7.0.0
+pytest==7.4.3
 pytest-cov>=4.0.0
-pytest-mock>=3.12.0
+pytest-mock==3.12.0
 pytest-asyncio>=0.23.5 

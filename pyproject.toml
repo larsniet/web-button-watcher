@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "web-button-watcher"
+dynamic = ["version"]
+description = "Watch "
+readme = "README.md"
+authors = [
+    {name = "Lars van der Niet", email = "lvdnbusiness@icloud.com"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "Pillow>=9.0.0",
+    "PyQt6>=6.4.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/larsniet/web-button-watcher"
+"Bug Tracker" = "https://github.com/larsniet/web-button-watcher/issues"
+
+[project.scripts]
+webbuttonwatcher = "webbuttonwatcher.cli:main"
+webbuttonwatcher-gui = "webbuttonwatcher.gui:main"
+
+[tool.coverage.run]
+source = ["webbuttonwatcher"]
+omit = ["webbuttonwatcher/interface/gui.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise NotImplementedError",
+    "except ImportError"
+] 

@@ -1,38 +1,694 @@
-name: Build
+name: Build and Release
 
 on:
   push:
     tags:
-      - "v*"
-  pull_request:
-    branches: [main]
+      - 'v*'
+
+# Add global permissions that apply to all jobs
+permissions:
+  contents: write
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-
+  create-release:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v3
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
         with:
-          python-version: "3.11"
-
+          tag_name: ${{ github.ref_name }}
+          name: "WebButtonWatcher ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## WebButtonWatcher ${{ github.ref_name }}
+            
+            Your vigilant assistant that keeps an eye on buttons you choose on any website and notifies you when they change state.
+            
+            ### 📥 Downloads
+            
+            Choose the version for your operating system:
+            
+            - **Windows**: Download `webbuttonwatcher-windows.zip`, extract the contents, and run "WebButtonWatcher.exe"
+            - **macOS**: Download `webbuttonwatcher-macos.zip`, extract and open the app
+              - ⚠️ **Security Warning**: When opening for the first time, right-click (or Ctrl+click) on "WebButtonWatcher.app" and select "Open" from the menu. Then click "Open" in the security dialog.
+            - **Linux**: Download `webbuttonwatcher-linux` and run it from the terminal
+              - Make executable first: `chmod +x webbuttonwatcher-linux`
+            
+            ### Changes in this version
+            
+            _See the automatically generated release notes below for details on changes_
+          
+  build-windows:
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e .
+          pip install "pyinstaller==4.10" pillow PyQt6
+          # Using an older, more trusted PyInstaller version with fewer false positives
+          
+      - name: Ensure resources directory
+        run: |
+          if (-not (Test-Path -Path "resources")) {
+            New-Item -ItemType Directory -Path "resources"
+          }
+          if (-not (Test-Path -Path "resources\icon.png")) {
+            # Use a fallback icon if the new logo doesn't exist
+            python -c "from PIL import Image; img = Image.new('RGB', (64, 64), color=(13, 99, 156)); img.save('resources/icon.ico')"
+          } else {
+            # Resize the icon to ensure consistent size
+            python -c "from PIL import Image; img = Image.open('resources/icon.png'); img = img.resize((256, 256), Image.LANCZOS); img.save('resources/icon.ico')"
+          }
+      
+      - name: Create Application Manifest
+        run: |
+          # Create a proper application manifest
+          echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+            <assemblyIdentity
+              version="1.0.0.0"
+              processorArchitecture="*"
+              name="WebButtonWatcher"
+              type="win32"
+            />
+            <description>WebButtonWatcher - Monitor websites for button changes</description>
+            <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+              <security>
+                <requestedPrivileges>
+                  <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+                </requestedPrivileges>
+              </security>
+            </trustInfo>
+            <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+              <application>
+                <!-- Windows 10 and 11 -->
+                <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+                <!-- Windows 8.1 -->
+                <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>
+                <!-- Windows 8 -->
+                <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>
+                <!-- Windows 7 -->
+                <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>
+              </application>
+            </compatibility>
+          </assembly>' > app.manifest
+          
+      - name: Build with PyInstaller
+        run: |
+          # Create a detailed spec file rather than command line options
+          echo "# -*- mode: python ; coding: utf-8 -*-
+          
+          block_cipher = None
+          
+          a = Analysis(
+              ['webbuttonwatcher/gui.py'],
+              pathex=[],
+              binaries=[],
+              datas=[('LICENSE', '.'), ('resources', 'resources')],
+              hiddenimports=[],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=['numpy', 'pandas', 'matplotlib', 'scipy', 'tk', 'tkinter'],
+              cipher=block_cipher,
+              noarchive=False,
+          )
+          
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+          
+          exe = EXE(
+              pyz,
+              a.scripts,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              [],
+              name='WebButtonWatcher',
+              debug=False,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=False,
+              upx_exclude=[],
+              runtime_tmpdir=None,
+              console=False,
+              disable_windowed_traceback=False,
+              argv_emulation=False,
+              target_arch=None,
+              codesign_identity=None,
+              entitlements_file=None,
+              icon='resources/icon.ico',
+              version='version_info.txt',
+              manifest='app.manifest',
+          )
+          " > windows.spec
+          
+          # Add a version resource file with proper company information
+          # This makes the executable look more legitimate to Windows
+          echo 'VSVersionInfo(
+            ffi=FixedFileInfo(
+              filevers=(1, 0, 0, 0),
+              prodvers=(1, 0, 0, 0),
+              mask=0x3f,
+              flags=0x0,
+              OS=0x40004,
+              fileType=0x1,
+              subtype=0x0,
+              date=(0, 0)
+            ),
+            kids=[
+              StringFileInfo(
+                [
+                  StringTable(
+                    "040904B0",
+                    [StringStruct("CompanyName", "Lars van der Niet"),
+                    StringStruct("FileDescription", "WebButtonWatcher - Monitor websites for button changes"),
+                    StringStruct("FileVersion", "${GITHUB_REF_NAME#v}"),
+                    StringStruct("InternalName", "WebButtonWatcher"),
+                    StringStruct("LegalCopyright", "© 2023 Lars van der Niet"),
+                    StringStruct("OriginalFilename", "WebButtonWatcher.exe"),
+                    StringStruct("ProductName", "WebButtonWatcher"),
+                    StringStruct("ProductVersion", "${GITHUB_REF_NAME#v}")])
+                ]), 
+              VarFileInfo([VarStruct("Translation", [0x409, 1200])])
+            ]
+          )' > version_info.txt
+          
+          # Build using the spec file
+          pyinstaller --clean windows.spec
+          
+      - name: Prepare Windows Distribution
+        run: |
+          # Create a directory for the distribution
+          $DistDir = "webbuttonwatcher-windows"
+          New-Item -ItemType Directory -Path $DistDir -Force
+          
+          # Copy the executable and necessary files
+          Copy-Item -Path "dist\WebButtonWatcher.exe" -Destination "$DistDir\"
+          Copy-Item -Path "LICENSE" -Destination "$DistDir\"
+          
+          # Create a minimal README
+          echo "# WebButtonWatcher
 
-      - name: Build application
-        run: python build.py
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          Your vigilant assistant that keeps an eye on buttons you choose on any website and notifies you when they change state.
+          
+          ## Usage
+          
+          Simply double-click 'WebButtonWatcher.exe' to launch the application.
+          
+          ## Copyright
+          
+          © 2023 Lars van der Niet
+          " > "$DistDir\README.txt"
+          
+          # Create a portable installer script
+          echo "@echo off
+          echo Installing WebButtonWatcher...
+          
+          REM Create a desktop shortcut
+          echo Set oWS = WScript.CreateObject(\"WScript.Shell\") > CreateShortcut.vbs
+          echo sLinkFile = oWS.SpecialFolders(\"Desktop\") ^& \"\\WebButtonWatcher.lnk\" >> CreateShortcut.vbs
+          echo Set oLink = oWS.CreateShortcut(sLinkFile) >> CreateShortcut.vbs
+          echo oLink.TargetPath = \"%~dp0WebButtonWatcher.exe\" >> CreateShortcut.vbs
+          echo oLink.WorkingDirectory = \"%~dp0\" >> CreateShortcut.vbs
+          echo oLink.Description = \"WebButtonWatcher - Monitor websites for button changes\" >> CreateShortcut.vbs
+          echo oLink.IconLocation = \"%~dp0WebButtonWatcher.exe,0\" >> CreateShortcut.vbs
+          echo oLink.Save >> CreateShortcut.vbs
+          cscript //nologo CreateShortcut.vbs
+          del CreateShortcut.vbs
+          
+          echo WebButtonWatcher has been installed! A shortcut has been placed on your desktop.
+          echo.
+          echo Press any key to launch the application...
+          pause > nul
+          start \"\" \"WebButtonWatcher.exe\"
+          " > "$DistDir\Install.bat"
+          
+          # Create a simple batch file to run without installation
+          echo "@echo off
+          start \"\" \"WebButtonWatcher.exe\"
+          " > "$DistDir\Run WebButtonWatcher.bat"
+          
+          # Create the ZIP file
+          Compress-Archive -Path "$DistDir\*" -DestinationPath "webbuttonwatcher-windows.zip" -Force
+          
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
         with:
-          name: WebButtonWatcher-${{ matrix.os }}${{ matrix.os == 'windows-latest' && '.zip' || '.dmg' }}
-          path: dist/WebButtonWatcher-${{ matrix.os }}${{ matrix.os == 'windows-latest' && '.zip' || '.dmg' }}
+          files: |
+            webbuttonwatcher-windows.zip
+          
+  build-macos:
+    needs: create-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller pillow PyQt6
+          
+      - name: Ensure resources directory
+        run: |
+          mkdir -p resources
+          if [ ! -f "resources/icon.png" ]; then
+            # Create a fallback icon if it doesn't exist
+            python -c "from PIL import Image; img = Image.new('RGB', (64, 64), color=(13, 99, 156)); img.save('resources/icon.png')"
+          fi
+          
+          # Resize and add padding to the icon - no numpy dependency
+          python -c "
+          from PIL import Image
+          
+          # Load the original image
+          img = Image.open('resources/icon.png')
+          
+          # Calculate target size with 10% padding on each side (reduced from 15%)
+          target_size = 1024  # High resolution for Retina displays
+          padding_percent = 0.10
+          padding_pixels = int(target_size * padding_percent)
+          content_size = target_size - (padding_pixels * 2)
+          
+          # Resize the content proportionally
+          if img.width > img.height:
+              new_width = content_size
+              new_height = int(img.height * content_size / img.width)
+          else:
+              new_height = content_size
+              new_width = int(img.width * content_size / img.height)
+          
+          resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+          
+          # Create a new image with padding
+          padded_img = Image.new('RGBA', (target_size, target_size), (0, 0, 0, 0))
+          
+          # Calculate position to center the resized image
+          paste_x = (target_size - new_width) // 2
+          paste_y = (target_size - new_height) // 2
+          
+          # Paste the resized image onto the padded canvas
+          padded_img.paste(resized_img, (paste_x, paste_y))
+          
+          # Save the padded image
+          padded_img.save('resources/icon_padded.png')
+          "
+          
+          # Convert PNG to ICNS format for better macOS integration
+          mkdir -p macOS.iconset
+          # Create all required icon sizes from the padded image
+          sips -z 16 16     resources/icon_padded.png --out macOS.iconset/icon_16x16.png
+          sips -z 32 32     resources/icon_padded.png --out macOS.iconset/icon_16x16@2x.png
+          sips -z 32 32     resources/icon_padded.png --out macOS.iconset/icon_32x32.png
+          sips -z 64 64     resources/icon_padded.png --out macOS.iconset/icon_32x32@2x.png
+          sips -z 128 128   resources/icon_padded.png --out macOS.iconset/icon_128x128.png
+          sips -z 256 256   resources/icon_padded.png --out macOS.iconset/icon_128x128@2x.png
+          sips -z 256 256   resources/icon_padded.png --out macOS.iconset/icon_256x256.png
+          sips -z 512 512   resources/icon_padded.png --out macOS.iconset/icon_256x256@2x.png
+          sips -z 512 512   resources/icon_padded.png --out macOS.iconset/icon_512x512.png
+          # Use the full-sized padded image for the largest Retina size (512@2x = 1024)
+          cp resources/icon_padded.png macOS.iconset/icon_512x512@2x.png
+          # Generate the final ICNS file
+          iconutil -c icns macOS.iconset -o resources/icon.icns
+          
+      - name: Build with PyInstaller
+        run: |
+          # Use a more complete spec for macOS
+          echo "# -*- mode: python ; coding: utf-8 -*-
+          block_cipher = None
+          
+          a = Analysis(
+              ['webbuttonwatcher/gui.py'],
+              pathex=[],
+              binaries=[],
+              datas=[('LICENSE', '.'), ('resources', 'resources')],
+              hiddenimports=[],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=[],
+              win_no_prefer_redirects=False,
+              win_private_assemblies=False,
+              cipher=block_cipher,
+              noarchive=False,
+          )
+          
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+          
+          exe = EXE(
+              pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='webbuttonwatcher',
+              debug=False,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=True,
+              console=False,
+              disable_windowed_traceback=False,
+              target_arch=None,
+              codesign_identity=None,
+              entitlements_file=None,
+              icon='resources/icon.icns',
+          )
+          
+          coll = COLLECT(
+              exe,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              strip=False,
+              upx=True,
+              upx_exclude=[],
+              name='webbuttonwatcher',
+          )
+          
+          app = BUNDLE(
+              coll,
+              name='WebButtonWatcher.app',
+              icon='resources/icon.icns',
+              bundle_identifier='com.larsniet.webbuttonwatcher',
+              info_plist={
+                  'CFBundleDisplayName': 'WebButtonWatcher',
+                  'CFBundleShortVersionString': '${GITHUB_REF_NAME#v}',
+                  'NSHighResolutionCapable': 'True',
+                  'LSApplicationCategoryType': 'public.app-category.utilities',
+                  'NSHumanReadableCopyright': '© 2023 Lars van der Niet'
+              },
+          )" > macOS.spec
+          
+          # Build using the spec file
+          pyinstaller macOS.spec
+      
+      - name: Setup Code Signing
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          MACOS_DEVELOPER_ID: ${{ secrets.MACOS_DEVELOPER_ID }}
+        run: |
+          # Skip certificate-based signing if any required secret is missing
+          if [ -z "$MACOS_CERTIFICATE_BASE64" ] || [ -z "$MACOS_DEVELOPER_ID" ]; then
+            echo "Certificate or Developer ID not provided - using ad-hoc signing instead"
+            echo "Signing the application with ad-hoc identity (no Apple verification)"
+            codesign --force --deep --sign - "dist/WebButtonWatcher.app"
+            echo "Ad-hoc signing completed successfully"
+            
+            echo "Creating zip file for distribution..."
+            cd dist
+            zip -r ../webbuttonwatcher-macos.zip "WebButtonWatcher.app"
+            cd ..
+            echo "ZIP file created successfully."
+            exit 0
+          fi
+          
+          # Use a simple approach - one attempt with password, then fallback to ad-hoc
+          echo "Setting up for code signing..."
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          
+          # Create keychain
+          echo "Creating temporary keychain..."
+          security create-keychain -p "temporary-password" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "temporary-password" $KEYCHAIN_PATH
+          security default-keychain -s $KEYCHAIN_PATH
+          
+          # Decode certificate
+          echo "Decoding certificate..."
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
+          
+          # Import certificate (single attempt)
+          echo "Importing certificate..."
+          if [ -n "$MACOS_P12_PASSWORD" ]; then
+            # Try with provided password
+            if ! security import $CERT_PATH -P "$MACOS_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH; then
+              echo "Certificate import failed - using ad-hoc signing instead"
+              codesign --force --deep --sign - "dist/WebButtonWatcher.app"
+              echo "Ad-hoc signing completed successfully"
+              cd dist
+              zip -r ../webbuttonwatcher-macos.zip "WebButtonWatcher.app"
+              cd ..
+              exit 0
+            fi
+          else
+            # Try without password
+            if ! security import $CERT_PATH -A -t cert -f pkcs12 -k $KEYCHAIN_PATH; then
+              echo "Certificate import failed - using ad-hoc signing instead"
+              codesign --force --deep --sign - "dist/WebButtonWatcher.app"
+              echo "Ad-hoc signing completed successfully"
+              cd dist
+              zip -r ../webbuttonwatcher-macos.zip "WebButtonWatcher.app"
+              cd ..
+              exit 0
+            fi
+          fi
+          
+          # Set partition list
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temporary-password" $KEYCHAIN_PATH
+          
+          # Check available identities
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning $KEYCHAIN_PATH
+          
+          # Create entitlements file for hardened runtime
+          echo '<?xml version="1.0" encoding="UTF-8"?>' > entitlements.plist
+          echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> entitlements.plist
+          echo '<plist version="1.0">' >> entitlements.plist
+          echo '<dict>' >> entitlements.plist
+          echo '    <key>com.apple.security.cs.allow-jit</key>' >> entitlements.plist
+          echo '    <true/>' >> entitlements.plist
+          echo '    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>' >> entitlements.plist
+          echo '    <true/>' >> entitlements.plist
+          echo '    <key>com.apple.security.cs.disable-library-validation</key>' >> entitlements.plist
+          echo '    <true/>' >> entitlements.plist
+          echo '    <key>com.apple.security.cs.disable-executable-page-protection</key>' >> entitlements.plist
+          echo '    <true/>' >> entitlements.plist
+          # Add network access entitlement for WebButtonWatcher to connect to websites
+          echo '    <key>com.apple.security.network.client</key>' >> entitlements.plist
+          echo '    <true/>' >> entitlements.plist
+          # Only add the entitlement for user-selected files
+          echo '    <key>com.apple.security.files.user-selected.read-write</key>' >> entitlements.plist
+          echo '    <true/>' >> entitlements.plist
+          echo '</dict>' >> entitlements.plist
+          echo '</plist>' >> entitlements.plist
+
+          # Sign the app
+          echo "Signing app with Developer ID: $MACOS_DEVELOPER_ID"
+          # First, sign all dynamic libraries and binaries inside the app
+          find "dist/WebButtonWatcher.app" -type f -name "*.dylib" -o -name "*.so" | while read file; do
+            echo "Signing binary component: $file"
+            codesign --force --options runtime --sign "$MACOS_DEVELOPER_ID" --timestamp "$file" || echo "Warning: Failed to sign $file"
+          done
+          
+          # Look for any other executable files like Python binary
+          find "dist/WebButtonWatcher.app" -type f -perm +111 -not -path "*/\.*" | while read file; do
+            if file "$file" | grep -q "executable"; then
+              echo "Signing executable: $file"
+              codesign --force --options runtime --sign "$MACOS_DEVELOPER_ID" --timestamp "$file" || echo "Warning: Failed to sign $file"
+            fi
+          done
+          
+          # Finally sign the entire app with entitlements
+          if ! codesign --force --options runtime --sign "$MACOS_DEVELOPER_ID" --timestamp --deep --entitlements entitlements.plist "dist/WebButtonWatcher.app"; then
+            echo "Code signing failed - falling back to ad-hoc signing"
+            codesign --force --deep --sign - "dist/WebButtonWatcher.app"
+          fi
+          
+          # Verify signature
+          codesign --verify --verbose "dist/WebButtonWatcher.app" || echo "Verification failed, but continuing"
+          
+          # Create final zip
+          echo "Creating final distributable ZIP..."
+          cd dist
+          ditto -c -k --keepParent "WebButtonWatcher.app" "../webbuttonwatcher-macos.zip"
+          cd ..
+          echo "ZIP file created successfully with all permissions and attributes preserved."
+      
+      
+      - name: Debug Environment Variables
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+        run: |
+          echo "Checking environment variables:"
+          echo "MACOS_CERTIFICATE_BASE64 is set: $([[ -n "$MACOS_CERTIFICATE_BASE64" ]] && echo 'YES' || echo 'NO')"
+          echo "MACOS_APPLE_ID is set: $([[ -n "$MACOS_APPLE_ID" ]] && echo 'YES' || echo 'NO')"
+          echo "  - First character: ${MACOS_APPLE_ID:0:1}"
+          echo "  - Last character: ${MACOS_APPLE_ID: -1}"
+          echo "  - Length: ${#MACOS_APPLE_ID}"
+          
+          echo "MACOS_APPLE_PASSWORD is set: $([[ -n "$MACOS_APPLE_PASSWORD" ]] && echo 'YES' || echo 'NO')"
+          echo "  - First character: ${MACOS_APPLE_PASSWORD:0:1}"
+          echo "  - Last character: ${MACOS_APPLE_PASSWORD: -1}"
+          echo "  - Length: ${#MACOS_APPLE_PASSWORD}"
+          
+          echo "MACOS_APPLE_TEAM_ID is set: $([[ -n "$MACOS_APPLE_TEAM_ID" ]] && echo 'YES' || echo 'NO')"
+          echo "  - First character: ${MACOS_APPLE_TEAM_ID:0:1}"
+          echo "  - Last character: ${MACOS_APPLE_TEAM_ID: -1}"
+          echo "  - Length: ${#MACOS_APPLE_TEAM_ID}"
+          
+      - name: Notarize App
+        if: env.MACOS_APPLE_ID != '' && env.MACOS_APPLE_PASSWORD != '' && env.MACOS_APPLE_TEAM_ID != ''
+        env:
+          MACOS_APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          MACOS_APPLE_PASSWORD: ${{ secrets.MACOS_APPLE_PASSWORD }}
+          MACOS_APPLE_TEAM_ID: ${{ secrets.MACOS_APPLE_TEAM_ID }}
+        run: |
+          echo "Starting notarization process..."
+          
+          # Validate Apple ID related environment variables
+          if [ -z "$MACOS_APPLE_ID" ] || [ -z "$MACOS_APPLE_PASSWORD" ] || [ -z "$MACOS_APPLE_TEAM_ID" ]; then
+            echo "Error: Apple ID, password or team ID is not set. Skipping notarization."
+            exit 0
+          fi
+          
+          echo "Creating zip file for notarization..."
+          ditto -c -k --keepParent "dist/WebButtonWatcher.app" "WebButtonWatcher.zip"
+          
+          echo "Submitting app for notarization with Team ID: $MACOS_APPLE_TEAM_ID"
+          # Submit for notarization and wait for completion
+          xcrun notarytool submit "WebButtonWatcher.zip" \
+            --apple-id "$MACOS_APPLE_ID" \
+            --password "$MACOS_APPLE_PASSWORD" \
+            --team-id "$MACOS_APPLE_TEAM_ID" \
+            --wait > notarization_output.txt
+
+          # Extract submission ID
+          SUBMISSION_ID=$(cat notarization_output.txt | grep "id:" | head -1 | awk '{print $2}')
+          echo "Notarization completed with submission ID: $SUBMISSION_ID"
+          
+          # Get detailed log information
+          echo "Fetching detailed notarization log..."
+          xcrun notarytool log "$SUBMISSION_ID" \
+            --apple-id "$MACOS_APPLE_ID" \
+            --password "$MACOS_APPLE_PASSWORD" \
+            --team-id "$MACOS_APPLE_TEAM_ID" > notarization_log.txt
+            
+          cat notarization_log.txt
+          
+          # Check the notarization status
+          NOTARIZE_STATUS=$(xcrun notarytool info "$SUBMISSION_ID" \
+            --apple-id "$MACOS_APPLE_ID" \
+            --password "$MACOS_APPLE_PASSWORD" \
+            --team-id "$MACOS_APPLE_TEAM_ID" | grep "status:" | awk '{print $2}')
+          
+          if [ "$NOTARIZE_STATUS" = "Accepted" ]; then
+            echo "Notarization succeeded! Stapling notarization ticket to the app..."
+            # Staple the ticket to the app
+            xcrun stapler staple "dist/WebButtonWatcher.app"
+            # Verify stapling was successful
+            echo "Verifying staple was applied correctly..."
+            xcrun stapler validate -v "dist/WebButtonWatcher.app"
+            # Check if the app is ready to run by querying its status
+            echo "Checking final app status with spctl..."
+            spctl --assess --verbose=4 --type exec "dist/WebButtonWatcher.app" || echo "Warning: spctl verification failed, but continuing"
+            
+            # Additional verification and diagnostics
+            echo "Checking code signature details..."
+            codesign -dvv "dist/WebButtonWatcher.app" || echo "Warning: Detailed verification failed, but continuing"
+            
+            echo "Verifying with strict assessment..."
+            spctl --assess --verbose=4 --type exec --context context:primary-signature "dist/WebButtonWatcher.app" || echo "Warning: Strict verification failed, but continuing"
+            
+            echo "Stapling complete!"
+          else
+            echo "Warning: Notarization failed. Will still create the zip file, but the app may show security warnings."
+          fi
+          
+          echo "Creating final distributable ZIP..."
+          cd dist
+          ditto -c -k --keepParent "WebButtonWatcher.app" "../webbuttonwatcher-macos.zip"
+          cd ..
+          echo "ZIP file created successfully with all permissions and attributes preserved."
+      
+      - name: Create Unsigned ZIP Archive (Fallback)
+        if: env.MACOS_CERTIFICATE_BASE64 == '' || failure()
+        run: |
+          echo "Creating unsigned ZIP archive as fallback..."
+          cd dist
+          ditto -c -k --keepParent "WebButtonWatcher.app" "../webbuttonwatcher-macos.zip"
+          cd ..
+          echo "Unsigned ZIP file created successfully with all permissions and attributes preserved."
+          
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            webbuttonwatcher-macos.zip       
+          
+  build-linux:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev qttools5-dev-tools
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller pillow PyQt6
+          
+      - name: Ensure resources directory
+        run: |
+          mkdir -p resources
+          if [ ! -f "resources/icon.png" ]; then
+            # Create a fallback icon if it doesn't exist
+            python -c "from PIL import Image; img = Image.new('RGB', (64, 64), color=(13, 99, 156)); img.save('resources/icon.png')"
+          else
+            # Resize the icon to ensure consistent size for Linux
+            python -c "from PIL import Image; img = Image.open('resources/icon.png'); img = img.resize((256, 256), Image.LANCZOS); img.save('resources/icon_256.png')"
+            mv resources/icon_256.png resources/icon.png
+          fi
+          
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --name=webbuttonwatcher --onefile --add-data="LICENSE:." --add-data="resources:resources" webbuttonwatcher/gui.py
+          
+      - name: Prepare Assets
+        run: |
+          # Copy with a more descriptive name
+          cp dist/webbuttonwatcher webbuttonwatcher-linux
+          chmod +x webbuttonwatcher-linux
+          
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            webbuttonwatcher-linux
+            
+
+
+

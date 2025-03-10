@@ -19,7 +19,7 @@ class SettingsManager:
         if settings_file is None:
             # Use default settings file in user's home directory
             home_dir = os.path.expanduser("~")
-            settings_dir = os.path.join(home_dir, ".web_button_watcher")
+            settings_dir = os.path.join(home_dir, ".webbuttonwatcher")
             
             # Create directory if it doesn't exist
             if not os.path.exists(settings_dir):
@@ -108,7 +108,24 @@ class SettingsManager:
         Returns:
             Setting value or default.
         """
-        return self.settings.get(key, default)
+        value = self.settings.get(key, default)
+        
+        # Type checking for specific settings
+        if key == 'selected_buttons' and not isinstance(value, list):
+            logger.warning(f"Retrieved {key} with incorrect type {type(value)}. Converting to list.")
+            if isinstance(value, (int, float)):
+                value = [int(value)]
+            else:
+                value = []
+                
+        if key == 'refresh_interval' and not isinstance(value, (int, float)):
+            logger.warning(f"Retrieved {key} with incorrect type {type(value)}. Converting to float.")
+            if isinstance(value, list) and value and isinstance(value[0], (int, float)):
+                value = float(value[0])
+            else:
+                value = default if isinstance(default, (int, float)) else 5.0
+        
+        return value
     
     def set(self, key: str, value: Any) -> bool:
         """Set a setting value.
@@ -120,6 +137,21 @@ class SettingsManager:
         Returns:
             True if successful, False otherwise.
         """
+        # Type checking for specific settings
+        if key == 'selected_buttons' and not isinstance(value, list):
+            logger.warning(f"Attempted to set {key} to incorrect type {type(value)}. Converting to list.")
+            if isinstance(value, (int, float)):
+                value = [int(value)]
+            else:
+                value = []
+                
+        if key == 'refresh_interval' and not isinstance(value, (int, float)):
+            logger.warning(f"Attempted to set {key} to incorrect type {type(value)}. Converting to float.")
+            if isinstance(value, list) and value and isinstance(value[0], (int, float)):
+                value = float(value[0])
+            else:
+                value = 5.0
+                
         self.settings[key] = value
         return self._save_settings()
     

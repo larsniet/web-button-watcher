@@ -18,7 +18,7 @@ def mock_telegram_notifier():
     with patch('asyncio.new_event_loop', return_value=mock_loop), \
          patch('asyncio.get_event_loop', return_value=mock_loop), \
          patch('asyncio.set_event_loop'), \
-         patch('web_button_watcher.utils.notifier.TelegramClient') as mock_client:
+         patch('webbuttonwatcher.utils.notifier.TelegramClient') as mock_client:
         
         # Create a mock client instance
         client_instance = MagicMock()
@@ -28,7 +28,7 @@ def mock_telegram_notifier():
         mock_client.return_value = client_instance
         
         # Mock the TelegramNotifier class
-        with patch('web_button_watcher.utils.notifier.TelegramNotifier') as mock_notifier:
+        with patch('webbuttonwatcher.utils.notifier.TelegramNotifier') as mock_notifier:
             instance = MagicMock()
             instance.loop = mock_loop
             instance.cleanup = AsyncMock()

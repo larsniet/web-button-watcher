@@ -51,8 +51,8 @@ def mock_settings():
 @pytest.fixture
 def gui(root, mock_settings):
     """Create a MonitorGUI instance."""
-    with patch('web_button_watcher.interface.cli.MonitorController') as mock_controller, \
-         patch('web_button_watcher.interface.gui.Settings', return_value=mock_settings), \
+    with patch('webbuttonwatcher.interface.cli.MonitorController') as mock_controller, \
+         patch('webbuttonwatcher.interface.gui.Settings', return_value=mock_settings), \
          patch('tkinter.ttk.Frame') as mock_frame, \
          patch('tkinter.ttk.LabelFrame') as mock_label_frame, \
          patch('tkinter.ttk.Entry') as mock_entry, \
@@ -183,7 +183,7 @@ class TestMonitorGUI:
         gui.start_btn.config.assert_called_with(state=tk.NORMAL)
 
     @patch('tkinter.messagebox.showerror')
-    @patch('web_button_watcher.interface.gui.threading.Thread')
+    @patch('webbuttonwatcher.interface.gui.threading.Thread')
     def test_start_monitor(self, mock_thread, mock_error, gui):
         """Test starting the monitor."""
         # Setup test data

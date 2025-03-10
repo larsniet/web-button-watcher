@@ -199,6 +199,19 @@ class ButtonMonitor:
                     time.sleep(self.refresh_interval)
                     
                 except WebDriverException as e:
+                    error_message = str(e)
+                    
+                    # Check if this is a "window closed" error (user closed the browser)
+                    if "target window already closed" in error_message or "web view not found" in error_message:
+                        logger.info("Browser window was closed by user")
+                        
+                        if self.status_callback:
+                            self.status_callback("Browser was closed. Stopping monitoring.")
+                        
+                        self.is_running = False
+                        break
+                    
+                    # Handle other WebDriver errors
                     logger.error(f"WebDriver error during monitoring: {e}")
                     print("\nBrowser error. Attempting to recover...")
                     

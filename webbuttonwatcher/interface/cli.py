@@ -4,11 +4,11 @@ import logging
 import time
 import asyncio
 from typing import List, Dict, Any, Optional
-from ..core.driver_manager import DriverManager
-from ..core.button_selector import ButtonSelector
-from ..core.button_monitor import ButtonMonitor
-from ..utils.settings import SettingsManager
-from ..utils.notifier import TelegramNotifier
+from webbuttonwatcher.core.driver_manager import DriverManager
+from webbuttonwatcher.core.button_selector import ButtonSelector
+from webbuttonwatcher.core.button_monitor import ButtonMonitor
+from webbuttonwatcher.utils.settings import SettingsManager
+from webbuttonwatcher.utils.notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +89,23 @@ class MonitorController:
             if all(telegram_settings.values()):
                 self.notifier = TelegramNotifier()
             
-            # Initialize driver manager if needed
-            if not self.driver_manager:
+            # Check if we need to reinitialize the driver
+            needs_new_driver = True
+            if self.driver_manager:
+                # Check if the existing browser is still alive
+                try:
+                    # Simple check - try to get the current URL
+                    if self.driver_manager.driver:
+                        current_url = self.driver_manager.driver.current_url
+                        needs_new_driver = False
+                except Exception as e:
+                    logger.info(f"Existing browser is no longer available, reinitializing: {e}")
+                    self.driver_manager = None
+            
+            # Initialize or reinitialize driver manager if needed
+            if needs_new_driver:
+                if self.status_callback:
+                    self.status_callback("Initializing browser...")
                 self.driver_manager = DriverManager()
                 self.driver_manager.navigate_to(url)
             
@@ -208,3 +223,147 @@ class MonitorController:
             callback: Function to call with status updates.
         """
         self.status_callback = callback
+
+def cli_main():
+    """Run the CLI interface for the Web Button Watcher."""
+    import argparse
+    import sys
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    parser = argparse.ArgumentParser(description="Web Button Watcher CLI")
+    parser.add_argument("--url", help="URL to monitor")
+    parser.add_argument("--select", action="store_true", help="Select buttons to monitor")
+    parser.add_argument("--monitor", action="store_true", help="Start monitoring selected buttons")
+    parser.add_argument("--refresh", type=float, default=5.0, help="Refresh interval in seconds")
+    args = parser.parse_args()
+    
+    try:
+        controller = MonitorController()
+        
+        # Set status callback to print to console
+        controller.set_status_callback(lambda message: print(message))
+        
+        if args.select and args.url:
+            # Select buttons mode
+            print(f"Opening {args.url} to select buttons...")
+            selected = controller.select_buttons(args.url)
+            if selected:
+                print(f"Selected buttons: {', '.join(str(i+1) for i in selected)}")
+            else:
+                print("No buttons selected.")
+                
+        elif args.monitor and args.url:
+            # Start monitoring mode
+            settings = controller.settings_manager
+            selected_buttons = settings.get('selected_buttons', [])
+            
+            if not selected_buttons:
+                print("No buttons selected. Use --select first.")
+                return
+                
+            print(f"Monitoring {args.url} with refresh interval {args.refresh}s")
+            print("Press Ctrl+C to stop monitoring")
+            
+            try:
+                controller.start_monitoring(args.url, selected_buttons, args.refresh)
+            except KeyboardInterrupt:
+                print("\nMonitoring stopped by user")
+                controller.stop_monitoring()
+                
+        else:
+            # Interactive mode
+            while True:
+                print("\nWeb Button Watcher CLI")
+                print("1. Configure settings")
+                print("2. Select buttons")
+                print("3. Start monitoring")
+                print("4. Exit")
+                
+                choice = input("\nEnter your choice (1-4): ")
+                
+                if choice == "1":
+                    # Configure settings
+                    print("\nConfigure Settings:")
+                    url = input("Enter URL to monitor: ")
+                    if url:
+                        controller.settings_manager.update({'url': url})
+                    
+                    refresh = input("Enter refresh interval in seconds (default: 5.0): ")
+                    if refresh:
+                        try:
+                            controller.settings_manager.update({'refresh_interval': float(refresh)})
+                        except ValueError:
+                            print("Invalid refresh interval. Using default.")
+                    
+                    # Telegram settings
+                    print("\nTelegram settings:")
+                    api_id = input("API ID: ")
+                    api_hash = input("API Hash: ")
+                    bot_token = input("Bot Token: ")
+                    chat_id = input("Chat ID: ")
+                    
+                    if api_id or api_hash or bot_token or chat_id:
+                        controller.settings_manager.update_telegram_settings(
+                            api_id, api_hash, bot_token, chat_id
+                        )
+                    
+                    print("Settings updated.")
+                    
+                elif choice == "2":
+                    # Select buttons
+                    url = controller.settings_manager.get('url', '')
+                    if not url:
+                        url = input("Enter URL to monitor: ")
+                        if url:
+                            controller.settings_manager.update({'url': url})
+                    
+                    if url:
+                        print(f"Opening {url} to select buttons...")
+                        selected = controller.select_buttons(url)
+                        if selected:
+                            print(f"Selected buttons: {', '.join(str(i+1) for i in selected)}")
+                        else:
+                            print("No buttons selected.")
+                    else:
+                        print("URL is required.")
+                        
+                elif choice == "3":
+                    # Start monitoring
+                    url = controller.settings_manager.get('url', '')
+                    selected_buttons = controller.settings_manager.get('selected_buttons', [])
+                    refresh_interval = controller.settings_manager.get('refresh_interval', 5.0)
+                    
+                    if not url:
+                        print("URL is not set. Configure settings first.")
+                        continue
+                        
+                    if not selected_buttons:
+                        print("No buttons selected. Select buttons first.")
+                        continue
+                        
+                    print(f"Monitoring {url} with refresh interval {refresh_interval}s")
+                    print("Press Ctrl+C to stop monitoring")
+                    
+                    try:
+                        controller.start_monitoring(url, selected_buttons, refresh_interval)
+                    except KeyboardInterrupt:
+                        print("\nMonitoring stopped by user")
+                        controller.stop_monitoring()
+                        
+                elif choice == "4":
+                    # Exit
+                    print("Exiting...")
+                    break
+                    
+                else:
+                    print("Invalid choice. Please try again.")
+    
+    except Exception as e:
+        logger.exception("Error in CLI main: %s", str(e))
+        print(f"Error: {str(e)}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    cli_main()
