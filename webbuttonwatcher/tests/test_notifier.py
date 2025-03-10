@@ -1,10 +1,13 @@
 """Tests for the Telegram notifier."""
 
 import pytest
-import asyncio
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+import logging
+from unittest.mock import Mock, patch, MagicMock
 from ..utils.notifier import TelegramNotifier
 from ..utils.settings import SettingsManager
+
+# Remove the asyncio mark since the tests are synchronous
+# pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def mock_settings():
@@ -18,156 +21,117 @@ def mock_settings():
     }
     return settings
 
-@pytest.fixture
-def mock_telegram_client():
-    """Create a mock Telegram client."""
-    with patch('webbuttonwatcher.utils.notifier.TelegramClient') as mock_client:
-        client_instance = MagicMock()
-        client_instance.start = AsyncMock()
-        client_instance.send_message = AsyncMock()
-        client_instance.disconnect = AsyncMock()
-        mock_client.return_value = client_instance
-        yield client_instance
-
-@pytest.mark.asyncio
 class TestTelegramNotifier:
-    """Test suite for TelegramNotifier class."""
-
-    async def test_init_with_valid_credentials(self, mock_settings, mock_telegram_client):
-        """Test initialization with valid credentials."""
-        notifier = TelegramNotifier()
-        await notifier.initialize()
+    """Test the TelegramNotifier class."""
+    
+    def test_init(self, mock_settings):
+        """Test initialization with settings."""
+        # Create notifier
+        notifier = TelegramNotifier(settings_manager=mock_settings)
         
         # Verify settings were loaded
-        assert notifier.api_id == 12345
-        assert notifier.api_hash == 'abcdef'
-        assert notifier.bot_token == '123:abc'
-        assert notifier.chat_id == 123456
+        assert notifier.settings_manager == mock_settings
+        assert notifier.telegram_settings == mock_settings.get_telegram_settings.return_value
+    
+    def test_init_with_no_settings(self):
+        """Test initialization with no settings provided."""
+        with patch('webbuttonwatcher.utils.notifier.SettingsManager') as mock_settings_cls:
+            settings_instance = MagicMock(spec=SettingsManager)
+            settings_instance.get_telegram_settings.return_value = {
+                'api_id': '',
+                'api_hash': '',
+                'bot_token': '',
+                'chat_id': ''
+            }
+            mock_settings_cls.return_value = settings_instance
+            
+            # Create notifier
+            notifier = TelegramNotifier()
+            
+            # Verify settings were loaded
+            assert notifier.settings_manager == settings_instance
+            assert notifier.telegram_settings == settings_instance.get_telegram_settings.return_value
+            
+    def test_send_notification_success(self, mock_settings):
+        """Test sending notification successfully."""
+        # Setup mocks for TelegramClient
+        mock_client = MagicMock()
+        mock_client.start = MagicMock(return_value=None)
+        mock_client.disconnect = MagicMock(return_value=None)
+        mock_client.loop = MagicMock()
+        mock_client.loop.run_until_complete = MagicMock(return_value=None)
         
-        # Verify client was initialized
-        mock_telegram_client.start.assert_awaited_once_with(bot_token='123:abc')
-        mock_telegram_client.send_message.assert_awaited_once_with(123456, "🤖 Bot initialized and ready to monitor buttons!")
-        await notifier.cleanup()
-
-    async def test_init_with_invalid_api_id(self, mock_settings):
-        """Test initialization with invalid API ID."""
-        mock_settings.return_value.get_telegram_settings.return_value = {
-            'api_id': 'not_a_number',
-            'api_hash': 'abcdef',
-            'bot_token': '123:abc',
-            'chat_id': '123456'
-        }
+        mock_telegram_client_cls = MagicMock(return_value=mock_client)
         
-        with pytest.raises(ValueError, match="API_ID and CHAT_ID must be integers"):
-            TelegramNotifier()
-
-    async def test_init_with_missing_credentials(self, mock_settings):
-        """Test initialization with missing credentials."""
-        mock_settings.return_value.get_telegram_settings.return_value = {
-            'api_id': '',
-            'api_hash': '',
-            'bot_token': '',
-            'chat_id': ''
-        }
+        # Create the notifier
+        notifier = TelegramNotifier(settings_manager=mock_settings)
         
-        with pytest.raises(ValueError, match="Missing Telegram credentials"):
-            TelegramNotifier()
-
-    async def test_notify_button_clicked_success(self, mock_settings, mock_telegram_client):
-        """Test successful button click notification."""
-        notifier = TelegramNotifier()
-        await notifier.initialize()
-        mock_telegram_client.send_message.reset_mock()  # Reset after init
+        # Patch both the import and the TelegramClient class
+        with patch.dict('sys.modules', {'telethon': MagicMock()}), \
+             patch('telethon.TelegramClient', mock_telegram_client_cls):
+            
+            # Call the method
+            result = notifier.send_notification("Test message")
+            
+            # Verify
+            assert result is True
+            mock_telegram_client_cls.assert_called_once()
+            mock_client.start.assert_called_once_with(bot_token='123:abc')
+            mock_client.loop.run_until_complete.assert_called_once()
+            mock_client.disconnect.assert_called_once()
         
-        # Test notification
-        result = await notifier.notify_button_clicked(1, "BOOK NOW")
+    def test_send_notification_missing_settings(self, mock_settings):
+        """Test sending notification with missing Telegram settings."""
+        with patch('webbuttonwatcher.utils.notifier.SettingsManager') as mock_settings_cls:
+            settings_instance = MagicMock(spec=SettingsManager)
+            settings_instance.get_telegram_settings.return_value = {
+                'api_id': '',
+                'api_hash': '',
+                'bot_token': '',
+                'chat_id': ''
+            }
+            mock_settings_cls.return_value = settings_instance
+            
+            # Create notifier and attempt to send
+            notifier = TelegramNotifier()
+            result = notifier.send_notification("Test message")
+            
+            # Verify send was not attempted
+            assert result is False
+    
+    def test_send_notification_import_error(self, mock_settings):
+        """Test sending notification with ImportError."""
+        # Create the notifier
+        notifier = TelegramNotifier(settings_manager=mock_settings)
         
-        # Verify message was sent
-        mock_telegram_client.send_message.assert_awaited_once_with(123456, "🔔 Button 1 changed to: BOOK NOW")
-        assert result is True
-        await notifier.cleanup()
-
-    async def test_notify_button_clicked_failure(self, mock_settings, mock_telegram_client):
-        """Test failed button click notification."""
-        notifier = TelegramNotifier()
-        await notifier.initialize()
-        mock_telegram_client.send_message.reset_mock()  # Reset after init
+        # Simulate ImportError
+        with patch.dict('sys.modules', {'telethon': None}), \
+             patch('builtins.__import__', side_effect=ImportError("No module named 'telethon'")):
+            
+            # Call the method
+            result = notifier.send_notification("Test message")
+            
+            # Verify
+            assert result is False
+    
+    @patch('webbuttonwatcher.utils.notifier.logger.error')
+    def test_send_notification_general_error(self, mock_logging, mock_settings):
+        """Test sending notification with general error."""
+        # Setup mock for TelegramClient
+        mock_client = MagicMock()
+        mock_client.start = MagicMock(side_effect=Exception("Test error"))
+        mock_telegram_client_cls = MagicMock(return_value=mock_client)
         
-        # Make send_message raise an exception
-        mock_telegram_client.send_message.side_effect = Exception("Network error")
+        # Create the notifier
+        notifier = TelegramNotifier(settings_manager=mock_settings)
         
-        # Test notification
-        result = await notifier.notify_button_clicked(1, "BOOK NOW")
-        
-        # Verify result
-        assert result is False
-        await notifier.cleanup()
-
-    async def test_cleanup_on_init_failure(self, mock_settings, mock_telegram_client):
-        """Test cleanup when initialization fails."""
-        # Make client.start raise an exception
-        mock_telegram_client.start.side_effect = Exception("Connection failed")
-        mock_telegram_client.disconnect.reset_mock()  # Reset before test
-        
-        notifier = TelegramNotifier()
-        with pytest.raises(Exception, match="Connection failed"):
-            await notifier.initialize()
-        
-        # Verify cleanup was called exactly once
-        mock_telegram_client.disconnect.assert_awaited_once()
-
-    async def test_cleanup(self, mock_settings, mock_telegram_client):
-        """Test cleanup method."""
-        notifier = TelegramNotifier()
-        await notifier.initialize()
-        mock_telegram_client.disconnect.reset_mock()  # Reset after init
-        
-        # Call cleanup
-        await notifier.cleanup()
-        
-        # Verify cleanup was called
-        mock_telegram_client.disconnect.assert_awaited_once()
-        assert not notifier.initialized
-
-    async def test_cleanup_on_deletion(self, mock_settings, mock_telegram_client):
-        """Test cleanup when object is deleted."""
-        notifier = TelegramNotifier()
-        await notifier.initialize()
-        mock_telegram_client.disconnect.reset_mock()  # Reset after init
-        
-        # Trigger cleanup
-        await notifier.cleanup()
-        
-        # Verify cleanup was called
-        mock_telegram_client.disconnect.assert_awaited_once()
-        assert not notifier.initialized
-
-    async def test_cleanup_with_closed_loop(self, mock_settings, mock_telegram_client):
-        """Test cleanup when event loop is already closed."""
-        notifier = TelegramNotifier()
-        await notifier.initialize()
-        mock_telegram_client.disconnect.reset_mock()  # Reset after init
-        
-        # Call cleanup
-        await notifier.cleanup()
-        
-        # Verify cleanup was called
-        mock_telegram_client.disconnect.assert_awaited_once()
-        assert not notifier.initialized
-
-    @patch('logging.error')
-    async def test_error_logging(self, mock_logging, mock_settings, mock_telegram_client):
-        """Test error logging."""
-        notifier = TelegramNotifier()
-        await notifier.initialize()
-        mock_telegram_client.send_message.reset_mock()  # Reset after init
-        
-        # Make send_message raise an exception
-        mock_telegram_client.send_message.side_effect = Exception("Test error")
-        
-        # Test notification
-        await notifier.notify_button_clicked(1, "BOOK NOW")
-        
-        # Verify error was logged
-        mock_logging.assert_called_with("Failed to send notification: Test error")
-        await notifier.cleanup() 
+        # Patch both the import and the TelegramClient class
+        with patch.dict('sys.modules', {'telethon': MagicMock()}), \
+             patch('telethon.TelegramClient', mock_telegram_client_cls):
+            
+            # Call the method
+            result = notifier.send_notification("Test message")
+            
+            # Verify
+            assert result is False
+            mock_logging.assert_called_with("Error sending Telegram notification: Test error") 

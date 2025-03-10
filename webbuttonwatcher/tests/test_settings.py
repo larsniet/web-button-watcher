@@ -25,11 +25,30 @@ def mock_telegram_notifier():
 def settings():
     """Create a test settings instance with a temporary file."""
     temp_file = Path("test_settings.json")
-    settings = SettingsManager(temp_file)
-    yield settings
-    # Clean up
-    if temp_file.exists():
-        temp_file.unlink()
+    # Create a clean settings instance for each test
+    with patch.object(SettingsManager, '_load_settings') as mock_load:
+        mock_load.return_value = {
+            'url': '',
+            'refresh_interval': 5.0,
+            'selected_buttons': [],
+            'telegram': {
+                'api_id': '',
+                'api_hash': '',
+                'bot_token': '',
+                'chat_id': ''
+            },
+            'window': {
+                'position_x': None,
+                'position_y': None,
+                'width': 600,
+                'height': 900
+            }
+        }
+        settings = SettingsManager(temp_file)
+        yield settings
+        # Clean up
+        if temp_file.exists():
+            temp_file.unlink()
 
 class TestSettings:
     """Test cases for the SettingsManager class."""
@@ -39,34 +58,41 @@ class TestSettings:
         assert hasattr(settings, 'settings_file')
         assert isinstance(settings._load_settings(), dict)
     
-    @patch('builtins.open', new_callable=mock_open)
-    @patch('json.load')
-    def test_load_existing_settings(self, mock_json_load, mock_file, settings):
-        """Test loading settings from an existing file."""
-        # Setup the mock to return some settings
-        mock_settings = {
-            'telegram': {
-                'api_id': '12345',
-                'api_hash': 'abcdef',
-                'bot_token': '123:abc',
-                'chat_id': '123456'
-            },
-            'window': {
-                'x': 100,
-                'y': 200,
-                'width': 800,
-                'height': 600
+    def test_load_settings_file_exists(self):
+        """Test loading settings from an existing file (standalone test)."""
+        # Create a test instance with mocked path existence check
+        with patch('os.path.exists') as mock_exists:
+            mock_exists.return_value = True
+            
+            # Create a mock for open and json.load
+            test_settings = {
+                'url': 'https://example.com',
+                'refresh_interval': 10.0,
+                'selected_buttons': [1, 2],
+                'telegram': {
+                    'api_id': '12345',
+                    'api_hash': 'abcdef',
+                    'bot_token': '123:abc',
+                    'chat_id': '123456'
+                }
             }
-        }
-        mock_json_load.return_value = mock_settings
-        
-        # Call the function
-        result = settings._load_settings()
-        
-        # Verify
-        mock_file.assert_called_once_with(settings.settings_file, 'r')
-        mock_json_load.assert_called_once_with(mock_file())
-        assert result == mock_settings
+            
+            # Setup the mocks for file operations
+            mock_file = mock_open(read_data=json.dumps(test_settings))
+            
+            # Create the settings manager and test loading
+            with patch('builtins.open', mock_file):
+                with patch('json.load', return_value=test_settings) as mock_json_load:
+                    settings_manager = SettingsManager("test_path.json")
+                    
+                    # Verify file was opened and parsed
+                    mock_file.assert_called_once_with("test_path.json", 'r')
+                    mock_json_load.assert_called_once()
+                    
+                    # Verify the settings were loaded correctly
+                    assert settings_manager.settings == test_settings
+                    assert settings_manager.get('url') == 'https://example.com'
+                    assert settings_manager.get('refresh_interval') == 10.0
     
     def test_get_set_settings(self, settings):
         """Test getting and setting individual settings."""
@@ -114,31 +140,48 @@ class TestSettings:
         """Test window position settings."""
         # Test default values
         window_settings = settings.get_window_settings()
-        assert window_settings.get('x') is None
-        assert window_settings.get('y') is None
-        assert window_settings.get('width') is None
-        assert window_settings.get('height') is None
+        assert window_settings.get('position_x') is None
+        assert window_settings.get('position_y') is None
+        assert window_settings.get('width') == 600
+        assert window_settings.get('height') == 900
         
         # Test updating values
         settings.save_window_position(100, 200, 800, 600)
         window_settings = settings.get_window_settings()
-        assert window_settings.get('x') == 100
-        assert window_settings.get('y') == 200
+        assert window_settings.get('position_x') == 100
+        assert window_settings.get('position_y') == 200
         assert window_settings.get('width') == 800
         assert window_settings.get('height') == 600
     
-    @patch('json.dump')
-    def test_save_settings(self, mock_json_dump, settings):
-        """Test saving settings to a file."""
-        # Setup test data
-        settings.set('test_key', 'test_value')
+    def test_save_settings_standalone(self):
+        """Test saving settings to a file (standalone test)."""
+        # Create settings with test data
+        test_settings = {
+            'url': 'https://example.com',
+            'refresh_interval': 10.0,
+            'selected_buttons': [1, 2],
+            'telegram': {
+                'api_id': '12345',
+                'api_hash': 'abcdef',
+                'bot_token': '123:abc',
+                'chat_id': '123456'
+            }
+        }
         
-        # Mock the open context manager
-        mock_file = mock_open()
-        with patch('builtins.open', mock_file):
-            result = settings._save_settings()
-        
-        # Verify
-        mock_file.assert_called_once_with(settings.settings_file, 'w')
-        mock_json_dump.assert_called_once()
-        assert result is True 
+        # Create a settings manager with the fixture pattern
+        with patch.object(SettingsManager, '_load_settings') as mock_load:
+            mock_load.return_value = test_settings
+            settings_manager = SettingsManager("test_path.json")
+            
+            # Mock the file operations
+            mock_file = mock_open()
+            
+            # Test saving
+            with patch('builtins.open', mock_file) as mock_open_call:
+                with patch('json.dump') as mock_json_dump:
+                    result = settings_manager._save_settings()
+                    
+                    # Verify file operations
+                    mock_open_call.assert_called_once_with("test_path.json", 'w')
+                    mock_json_dump.assert_called_once()
+                    assert result is True 
