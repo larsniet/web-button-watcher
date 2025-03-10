@@ -274,11 +274,61 @@ jobs:
           if [ ! -f "resources/icon.png" ]; then
             # Create a fallback icon if it doesn't exist
             python -c "from PIL import Image; img = Image.new('RGB', (64, 64), color=(13, 99, 156)); img.save('resources/icon.png')"
-          else
-            # Resize the icon to ensure consistent size for Linux
-            python -c "from PIL import Image; img = Image.open('resources/icon.png'); img = img.resize((256, 256), Image.LANCZOS); img.save('resources/icon_256.png')"
-            mv resources/icon_256.png resources/icon.png
           fi
+          
+          # Resize and add padding to the icon - no numpy dependency
+          python -c "
+          from PIL import Image
+          
+          # Load the original image
+          img = Image.open('resources/icon.png')
+          
+          # Calculate target size with 10% padding on each side (reduced from 15%)
+          target_size = 1024  # High resolution for Retina displays
+          padding_percent = 0.10
+          padding_pixels = int(target_size * padding_percent)
+          content_size = target_size - (padding_pixels * 2)
+          
+          # Resize the content proportionally
+          if img.width > img.height:
+              new_width = content_size
+              new_height = int(img.height * content_size / img.width)
+          else:
+              new_height = content_size
+              new_width = int(img.width * content_size / img.height)
+          
+          resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+          
+          # Create a new image with padding
+          padded_img = Image.new('RGBA', (target_size, target_size), (0, 0, 0, 0))
+          
+          # Calculate position to center the resized image
+          paste_x = (target_size - new_width) // 2
+          paste_y = (target_size - new_height) // 2
+          
+          # Paste the resized image onto the padded canvas
+          padded_img.paste(resized_img, (paste_x, paste_y))
+          
+          # Save the padded image
+          padded_img.save('resources/icon_padded.png')
+          "
+          
+          # Convert PNG to ICNS format for better macOS integration
+          mkdir -p macOS.iconset
+          # Create all required icon sizes from the padded image
+          sips -z 16 16     resources/icon_padded.png --out macOS.iconset/icon_16x16.png
+          sips -z 32 32     resources/icon_padded.png --out macOS.iconset/icon_16x16@2x.png
+          sips -z 32 32     resources/icon_padded.png --out macOS.iconset/icon_32x32.png
+          sips -z 64 64     resources/icon_padded.png --out macOS.iconset/icon_32x32@2x.png
+          sips -z 128 128   resources/icon_padded.png --out macOS.iconset/icon_128x128.png
+          sips -z 256 256   resources/icon_padded.png --out macOS.iconset/icon_128x128@2x.png
+          sips -z 256 256   resources/icon_padded.png --out macOS.iconset/icon_256x256.png
+          sips -z 512 512   resources/icon_padded.png --out macOS.iconset/icon_256x256@2x.png
+          sips -z 512 512   resources/icon_padded.png --out macOS.iconset/icon_512x512.png
+          # Use the full-sized padded image for the largest Retina size (512@2x = 1024)
+          cp resources/icon_padded.png macOS.iconset/icon_512x512@2x.png
+          # Generate the final ICNS file
+          iconutil -c icns macOS.iconset -o resources/icon.icns
           
       - name: Build with PyInstaller
         run: |
@@ -319,7 +369,7 @@ jobs:
               target_arch=None,
               codesign_identity=None,
               entitlements_file=None,
-              icon='resources/icon.png',
+              icon='resources/icon.icns',
           )
           
           coll = COLLECT(
@@ -336,7 +386,7 @@ jobs:
           app = BUNDLE(
               coll,
               name='WebButtonWatcher.app',
-              icon='resources/icon.png',
+              icon='resources/icon.icns',
               bundle_identifier='com.larsniet.webbuttonwatcher',
               info_plist={
                   'CFBundleDisplayName': 'WebButtonWatcher',
@@ -372,22 +422,14 @@ jobs:
             exit 0
           fi
           
-          # Use a simple approach with timeouts to prevent hanging
+          # Use a simple approach - one attempt with password, then fallback to ad-hoc
           echo "Setting up for code signing..."
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           CERT_PATH=$RUNNER_TEMP/certificate.p12
           
-          # Create keychain with a timeout
+          # Create keychain
           echo "Creating temporary keychain..."
-          timeout 30s security create-keychain -p "temporary-password" $KEYCHAIN_PATH || {
-            echo "Creating keychain timed out - falling back to ad-hoc signing"
-            codesign --force --deep --sign - "dist/WebButtonWatcher.app"
-            cd dist
-            zip -r ../webbuttonwatcher-macos.zip "WebButtonWatcher.app"
-            cd ..
-            exit 0
-          }
-          
+          security create-keychain -p "temporary-password" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "temporary-password" $KEYCHAIN_PATH
           security default-keychain -s $KEYCHAIN_PATH
@@ -396,40 +438,34 @@ jobs:
           echo "Decoding certificate..."
           echo "$MACOS_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
           
-          # Import certificate with a timeout
+          # Import certificate (single attempt)
           echo "Importing certificate..."
           if [ -n "$MACOS_P12_PASSWORD" ]; then
             # Try with provided password
-            timeout 30s security import $CERT_PATH -P "$MACOS_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH || {
-              echo "Certificate import timed out - using ad-hoc signing instead"
+            if ! security import $CERT_PATH -P "$MACOS_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH; then
+              echo "Certificate import failed - using ad-hoc signing instead"
               codesign --force --deep --sign - "dist/WebButtonWatcher.app"
+              echo "Ad-hoc signing completed successfully"
               cd dist
               zip -r ../webbuttonwatcher-macos.zip "WebButtonWatcher.app"
               cd ..
               exit 0
-            }
+            fi
           else
             # Try without password
-            timeout 30s security import $CERT_PATH -A -t cert -f pkcs12 -k $KEYCHAIN_PATH || {
-              echo "Certificate import timed out - using ad-hoc signing instead"
+            if ! security import $CERT_PATH -A -t cert -f pkcs12 -k $KEYCHAIN_PATH; then
+              echo "Certificate import failed - using ad-hoc signing instead"
               codesign --force --deep --sign - "dist/WebButtonWatcher.app"
+              echo "Ad-hoc signing completed successfully"
               cd dist
               zip -r ../webbuttonwatcher-macos.zip "WebButtonWatcher.app"
               cd ..
               exit 0
-            }
+            fi
           fi
           
-          # Set partition list with timeout
-          echo "Setting partition list..."
-          timeout 30s security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temporary-password" $KEYCHAIN_PATH || {
-            echo "Setting partition list timed out - using ad-hoc signing instead"
-            codesign --force --deep --sign - "dist/WebButtonWatcher.app"
-            cd dist
-            zip -r ../webbuttonwatcher-macos.zip "WebButtonWatcher.app"
-            cd ..
-            exit 0
-          }
+          # Set partition list
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "temporary-password" $KEYCHAIN_PATH
           
           # Check available identities
           echo "Available signing identities:"
@@ -532,67 +568,53 @@ jobs:
           ditto -c -k --keepParent "dist/WebButtonWatcher.app" "WebButtonWatcher.zip"
           
           echo "Submitting app for notarization with Team ID: $MACOS_APPLE_TEAM_ID"
-          # Submit for notarization with a timeout
-          timeout 300s xcrun notarytool submit "WebButtonWatcher.zip" \
+          # Submit for notarization and wait for completion
+          xcrun notarytool submit "WebButtonWatcher.zip" \
             --apple-id "$MACOS_APPLE_ID" \
             --password "$MACOS_APPLE_PASSWORD" \
             --team-id "$MACOS_APPLE_TEAM_ID" \
-            --wait > notarization_output.txt || {
-              echo "Notarization timed out or failed. Creating distributable without notarization..."
-              cd dist
-              ditto -c -k --keepParent "WebButtonWatcher.app" "../webbuttonwatcher-macos.zip"
-              cd ..
-              echo "ZIP file created without notarization."
-              exit 0
-            }
+            --wait > notarization_output.txt
 
-          # Parse output if notarization completed
-          if [ -f notarization_output.txt ]; then
-            SUBMISSION_ID=$(cat notarization_output.txt | grep "id:" | head -1 | awk '{print $2}')
-            echo "Notarization completed with submission ID: $SUBMISSION_ID"
+          # Extract submission ID
+          SUBMISSION_ID=$(cat notarization_output.txt | grep "id:" | head -1 | awk '{print $2}')
+          echo "Notarization completed with submission ID: $SUBMISSION_ID"
+          
+          # Get detailed log information
+          echo "Fetching detailed notarization log..."
+          xcrun notarytool log "$SUBMISSION_ID" \
+            --apple-id "$MACOS_APPLE_ID" \
+            --password "$MACOS_APPLE_PASSWORD" \
+            --team-id "$MACOS_APPLE_TEAM_ID" > notarization_log.txt
             
-            if [ -n "$SUBMISSION_ID" ]; then
-              # Get detailed log information with timeout
-              echo "Fetching detailed notarization log..."
-              timeout 60s xcrun notarytool log "$SUBMISSION_ID" \
-                --apple-id "$MACOS_APPLE_ID" \
-                --password "$MACOS_APPLE_PASSWORD" \
-                --team-id "$MACOS_APPLE_TEAM_ID" > notarization_log.txt || echo "Fetching log timed out"
-              
-              if [ -f notarization_log.txt ]; then
-                cat notarization_log.txt
-              fi
-              
-              # Check the notarization status with timeout
-              NOTARIZE_STATUS=""
-              timeout 60s xcrun notarytool info "$SUBMISSION_ID" \
-                --apple-id "$MACOS_APPLE_ID" \
-                --password "$MACOS_APPLE_PASSWORD" \
-                --team-id "$MACOS_APPLE_TEAM_ID" > notarization_info.txt || echo "Getting status timed out"
-              
-              if [ -f notarization_info.txt ]; then
-                NOTARIZE_STATUS=$(cat notarization_info.txt | grep "status:" | awk '{print $2}')
-              fi
-              
-              if [ "$NOTARIZE_STATUS" = "Accepted" ]; then
-                echo "Notarization succeeded! Stapling notarization ticket to the app..."
-                
-                # Staple the ticket to the app with timeout
-                timeout 60s xcrun stapler staple "dist/WebButtonWatcher.app" || echo "Stapling failed, but continuing"
-                
-                # Verify stapling was successful
-                echo "Verifying staple was applied correctly..."
-                timeout 30s xcrun stapler validate -v "dist/WebButtonWatcher.app" || echo "Staple validation failed, but continuing"
-                
-                # Check if the app is ready to run with timeout
-                echo "Checking final app status with spctl..."
-                timeout 30s spctl --assess --verbose=4 --type exec "dist/WebButtonWatcher.app" || echo "spctl verification failed, but continuing"
-                
-                echo "Stapling complete!"
-              else
-                echo "Notarization did not succeed with status: $NOTARIZE_STATUS (or unknown). Will still create the zip file."
-              fi
-            fi
+          cat notarization_log.txt
+          
+          # Check the notarization status
+          NOTARIZE_STATUS=$(xcrun notarytool info "$SUBMISSION_ID" \
+            --apple-id "$MACOS_APPLE_ID" \
+            --password "$MACOS_APPLE_PASSWORD" \
+            --team-id "$MACOS_APPLE_TEAM_ID" | grep "status:" | awk '{print $2}')
+          
+          if [ "$NOTARIZE_STATUS" = "Accepted" ]; then
+            echo "Notarization succeeded! Stapling notarization ticket to the app..."
+            # Staple the ticket to the app
+            xcrun stapler staple "dist/WebButtonWatcher.app"
+            # Verify stapling was successful
+            echo "Verifying staple was applied correctly..."
+            xcrun stapler validate -v "dist/WebButtonWatcher.app"
+            # Check if the app is ready to run by querying its status
+            echo "Checking final app status with spctl..."
+            spctl --assess --verbose=4 --type exec "dist/WebButtonWatcher.app" || echo "Warning: spctl verification failed, but continuing"
+            
+            # Additional verification and diagnostics
+            echo "Checking code signature details..."
+            codesign -dvv "dist/WebButtonWatcher.app" || echo "Warning: Detailed verification failed, but continuing"
+            
+            echo "Verifying with strict assessment..."
+            spctl --assess --verbose=4 --type exec --context context:primary-signature "dist/WebButtonWatcher.app" || echo "Warning: Strict verification failed, but continuing"
+            
+            echo "Stapling complete!"
+          else
+            echo "Warning: Notarization failed. Will still create the zip file, but the app may show security warnings."
           fi
           
           echo "Creating final distributable ZIP..."
@@ -601,27 +623,14 @@ jobs:
           cd ..
           echo "ZIP file created successfully with all permissions and attributes preserved."
       
-      - name: Create Unsigned ZIP Archive (Failsafe)
+      - name: Create Unsigned ZIP Archive (Fallback)
+        if: env.MACOS_CERTIFICATE_BASE64 == '' || failure()
         run: |
-          # This is a failsafe step to ensure we always create a ZIP file
-          if [ ! -f "webbuttonwatcher-macos.zip" ]; then
-            echo "No ZIP file was created in previous steps. Creating a basic unsigned ZIP..."
-            if [ -d "dist/WebButtonWatcher.app" ]; then
-              cd dist
-              zip -r ../webbuttonwatcher-macos.zip WebButtonWatcher.app
-              cd ..
-              echo "Failsafe ZIP file created successfully."
-            elif [ -d "dist/webbuttonwatcher.app" ]; then
-              cd dist
-              zip -r ../webbuttonwatcher-macos.zip webbuttonwatcher.app
-              cd ..
-              echo "Failsafe ZIP file created successfully."
-            else
-              echo "ERROR: Could not find any app bundle in the dist directory!"
-              ls -la dist/
-              exit 1
-            fi
-          fi
+          echo "Creating unsigned ZIP archive as fallback..."
+          cd dist
+          ditto -c -k --keepParent "WebButtonWatcher.app" "../webbuttonwatcher-macos.zip"
+          cd ..
+          echo "Unsigned ZIP file created successfully with all permissions and attributes preserved."
           
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
