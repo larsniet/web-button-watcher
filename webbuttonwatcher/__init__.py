@@ -5,7 +5,7 @@ import logging
 import argparse
 from importlib.metadata import version, PackageNotFoundError
 
-__version__ = "0.1.19"
+__version__ = "0.1.20"
 
 # Set up logging
 logging.basicConfig(
