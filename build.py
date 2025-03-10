@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 import time
 
+MAIN_SCRIPT = 'src/webbuttonwatcher/interface/gui.py'  # Entry point (updated to gui.py)
+
 def clean_build():
     """Clean up previous build files."""
     print("Cleaning previous build files...")
@@ -71,7 +73,7 @@ def build_exe():
             '--onedir',    # Create a directory with the executable
             '--noupx',     # Don't use UPX (can cause issues)
             '--log-level=INFO',
-            'webbuttonwatcher/interface/gui.py'  # Entry point (updated to gui.py)
+            MAIN_SCRIPT
         ]
         
         # Platform-specific additions

@@ -274,61 +274,11 @@ jobs:
           if [ ! -f "resources/icon.png" ]; then
             # Create a fallback icon if it doesn't exist
             python -c "from PIL import Image; img = Image.new('RGB', (64, 64), color=(13, 99, 156)); img.save('resources/icon.png')"
+          else
+            # Resize the icon to ensure consistent size for Linux
+            python -c "from PIL import Image; img = Image.open('resources/icon.png'); img = img.resize((256, 256), Image.LANCZOS); img.save('resources/icon_256.png')"
+            mv resources/icon_256.png resources/icon.png
           fi
-          
-          # Resize and add padding to the icon - no numpy dependency
-          python -c "
-          from PIL import Image
-          
-          # Load the original image
-          img = Image.open('resources/icon.png')
-          
-          # Calculate target size with 10% padding on each side (reduced from 15%)
-          target_size = 1024  # High resolution for Retina displays
-          padding_percent = 0.10
-          padding_pixels = int(target_size * padding_percent)
-          content_size = target_size - (padding_pixels * 2)
-          
-          # Resize the content proportionally
-          if img.width > img.height:
-              new_width = content_size
-              new_height = int(img.height * content_size / img.width)
-          else:
-              new_height = content_size
-              new_width = int(img.width * content_size / img.height)
-          
-          resized_img = img.resize((new_width, new_height), Image.LANCZOS)
-          
-          # Create a new image with padding
-          padded_img = Image.new('RGBA', (target_size, target_size), (0, 0, 0, 0))
-          
-          # Calculate position to center the resized image
-          paste_x = (target_size - new_width) // 2
-          paste_y = (target_size - new_height) // 2
-          
-          # Paste the resized image onto the padded canvas
-          padded_img.paste(resized_img, (paste_x, paste_y))
-          
-          # Save the padded image
-          padded_img.save('resources/icon_padded.png')
-          "
-          
-          # Convert PNG to ICNS format for better macOS integration
-          mkdir -p macOS.iconset
-          # Create all required icon sizes from the padded image
-          sips -z 16 16     resources/icon_padded.png --out macOS.iconset/icon_16x16.png
-          sips -z 32 32     resources/icon_padded.png --out macOS.iconset/icon_16x16@2x.png
-          sips -z 32 32     resources/icon_padded.png --out macOS.iconset/icon_32x32.png
-          sips -z 64 64     resources/icon_padded.png --out macOS.iconset/icon_32x32@2x.png
-          sips -z 128 128   resources/icon_padded.png --out macOS.iconset/icon_128x128.png
-          sips -z 256 256   resources/icon_padded.png --out macOS.iconset/icon_128x128@2x.png
-          sips -z 256 256   resources/icon_padded.png --out macOS.iconset/icon_256x256.png
-          sips -z 512 512   resources/icon_padded.png --out macOS.iconset/icon_256x256@2x.png
-          sips -z 512 512   resources/icon_padded.png --out macOS.iconset/icon_512x512.png
-          # Use the full-sized padded image for the largest Retina size (512@2x = 1024)
-          cp resources/icon_padded.png macOS.iconset/icon_512x512@2x.png
-          # Generate the final ICNS file
-          iconutil -c icns macOS.iconset -o resources/icon.icns
           
       - name: Build with PyInstaller
         run: |
@@ -369,7 +319,7 @@ jobs:
               target_arch=None,
               codesign_identity=None,
               entitlements_file=None,
-              icon='resources/icon.icns',
+              icon='resources/icon.png',
           )
           
           coll = COLLECT(
@@ -386,7 +336,7 @@ jobs:
           app = BUNDLE(
               coll,
               name='WebButtonWatcher.app',
-              icon='resources/icon.icns',
+              icon='resources/icon.png',
               bundle_identifier='com.larsniet.webbuttonwatcher',
               info_plist={
                   'CFBundleDisplayName': 'WebButtonWatcher',

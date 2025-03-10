@@ -23,11 +23,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
         
+    - name: Prepare clean source for PyPI (without resources)
+      run: |
+        # Make a copy of the project without the resources directory
+        mkdir -p /tmp/clean-package
+        rsync -av --exclude=resources --exclude=.git --exclude=dist --exclude=build . /tmp/clean-package/
+        
     - name: Build and publish
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
+        cd /tmp/clean-package
+        
         # Clean any existing dist directory to avoid uploading PyInstaller artifacts
         rm -rf dist/
         

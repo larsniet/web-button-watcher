@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "web-button-watcher"
-dynamic = ["version"]
+version = "0.0.0"  # This will be overridden at build time
 description = "Monitor websites for button changes and send notifications"
 readme = "README.md"
 authors = [
@@ -27,6 +27,13 @@ dependencies = [
     "Pillow>=9.0.0",
     "websockets>=12.0",
 ]
+
+[tool.setuptools]
+# Explicitly declare which packages to include
+packages = ["webbuttonwatcher", "webbuttonwatcher.interface", "webbuttonwatcher.core"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["resources/*"]
 
 [project.urls]
 "Homepage" = "https://github.com/larsniet/web-button-watcher"
