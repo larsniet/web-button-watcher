@@ -4,21 +4,19 @@ import pytest
 import asyncio
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from ..utils.notifier import TelegramNotifier
-from ..utils.settings import Settings
+from ..utils.settings import SettingsManager
 
 @pytest.fixture
 def mock_settings():
-    """Create a mock settings with valid Telegram credentials."""
-    with patch('webbuttonwatcher.utils.notifier.Settings') as mock_settings:
-        settings_instance = Mock()
-        settings_instance.get_telegram_settings.return_value = {
-            'api_id': '12345',
-            'api_hash': 'test_hash',
-            'bot_token': 'test_token',
-            'chat_id': '67890'
-        }
-        mock_settings.return_value = settings_instance
-        yield mock_settings
+    """Create a mock settings manager."""
+    settings = MagicMock(spec=SettingsManager)
+    settings.get_telegram_settings.return_value = {
+        'api_id': '12345',
+        'api_hash': 'abcdef',
+        'bot_token': '123:abc',
+        'chat_id': '123456'
+    }
+    return settings
 
 @pytest.fixture
 def mock_telegram_client():
@@ -42,22 +40,22 @@ class TestTelegramNotifier:
         
         # Verify settings were loaded
         assert notifier.api_id == 12345
-        assert notifier.api_hash == 'test_hash'
-        assert notifier.bot_token == 'test_token'
-        assert notifier.chat_id == 67890
+        assert notifier.api_hash == 'abcdef'
+        assert notifier.bot_token == '123:abc'
+        assert notifier.chat_id == 123456
         
         # Verify client was initialized
-        mock_telegram_client.start.assert_awaited_once_with(bot_token='test_token')
-        mock_telegram_client.send_message.assert_awaited_once_with(67890, "🤖 Bot initialized and ready to monitor buttons!")
+        mock_telegram_client.start.assert_awaited_once_with(bot_token='123:abc')
+        mock_telegram_client.send_message.assert_awaited_once_with(123456, "🤖 Bot initialized and ready to monitor buttons!")
         await notifier.cleanup()
 
     async def test_init_with_invalid_api_id(self, mock_settings):
         """Test initialization with invalid API ID."""
         mock_settings.return_value.get_telegram_settings.return_value = {
             'api_id': 'not_a_number',
-            'api_hash': 'test_hash',
-            'bot_token': 'test_token',
-            'chat_id': '67890'
+            'api_hash': 'abcdef',
+            'bot_token': '123:abc',
+            'chat_id': '123456'
         }
         
         with pytest.raises(ValueError, match="API_ID and CHAT_ID must be integers"):
@@ -85,7 +83,7 @@ class TestTelegramNotifier:
         result = await notifier.notify_button_clicked(1, "BOOK NOW")
         
         # Verify message was sent
-        mock_telegram_client.send_message.assert_awaited_once_with(67890, "🔔 Button 1 changed to: BOOK NOW")
+        mock_telegram_client.send_message.assert_awaited_once_with(123456, "🔔 Button 1 changed to: BOOK NOW")
         assert result is True
         await notifier.cleanup()
 

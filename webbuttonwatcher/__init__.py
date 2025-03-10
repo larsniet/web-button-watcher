@@ -5,10 +5,7 @@ import logging
 import argparse
 from importlib.metadata import version, PackageNotFoundError
 
-try:
-    __version__ = version("webbuttonwatcher")
-except PackageNotFoundError:
-    __version__ = "unknown"
+__version__ = "0.1.13"
 
 # Set up logging
 logging.basicConfig(

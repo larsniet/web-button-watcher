@@ -5,23 +5,24 @@ from unittest.mock import Mock, patch, MagicMock
 import os
 import asyncio
 from ..interface.cli import MonitorController
-from ..utils.settings import Settings
+from ..utils.settings import SettingsManager
 from ..utils.notifier import TelegramNotifier
 from ..core.monitor import PageMonitor
 
 @pytest.fixture
 def mock_settings():
-    """Create a mock settings."""
-    with patch('webbuttonwatcher.interface.cli.Settings') as mock_settings:
-        settings_instance = Mock()
+    """Create a mock settings manager."""
+    with patch('webbuttonwatcher.interface.cli.SettingsManager') as mock_settings:
+        settings_instance = MagicMock(spec=SettingsManager)
+        settings_instance.get.return_value = 'test_value'
         settings_instance.get_telegram_settings.return_value = {
             'api_id': '12345',
-            'api_hash': 'test_hash',
-            'bot_token': 'test_token',
-            'chat_id': '67890'
+            'api_hash': 'abcdef',
+            'bot_token': '123:abc',
+            'chat_id': '123456'
         }
         mock_settings.return_value = settings_instance
-        yield settings_instance
+        yield mock_settings
 
 @pytest.fixture
 def mock_monitor():
