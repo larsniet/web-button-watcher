@@ -34,5 +34,20 @@ jobs:
         # Build source and wheel distributions
         python -m build
         
-        # Only upload whl and tar.gz files (standard Python package formats)
-        twine upload dist/*.whl dist/*.tar.gz 
+        # List what's in the dist directory
+        echo "Files in dist directory:"
+        ls -la dist/
+        
+        # Check if wheel files exist and upload them
+        if ls dist/*.whl 1> /dev/null 2>&1; then
+          echo "Uploading wheels and source distributions..."
+          twine upload dist/*.whl dist/*.tar.gz
+        elif ls dist/*.tar.gz 1> /dev/null 2>&1; then
+          echo "No wheel files found. Uploading source distributions only..."
+          twine upload dist/*.tar.gz
+        else
+          echo "No distribution files found to upload. Skipping PyPI upload."
+          # This is not an error condition - the build might be focused on app bundles only
+          # We'll exit with 0 to allow the workflow to continue
+          exit 0
+        fi 
