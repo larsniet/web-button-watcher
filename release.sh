@@ -38,9 +38,9 @@ echo -e "\n${YELLOW}Checking git status...${NC}"
 git checkout main
 git pull
 
-# Run tests to ensure everything is working
-echo -e "\n${YELLOW}Running tests...${NC}"
-python3 -m pytest
+# Run only tests that don't launch browser windows
+echo -e "\n${YELLOW}Running safe tests (no browser windows)...${NC}"
+python3 -m pytest webbuttonwatcher/tests/test_cli.py webbuttonwatcher/tests/test_settings.py webbuttonwatcher/tests/test_notifier.py
 if [ $? -ne 0 ]; then
   echo -e "${RED}Tests failed. Fix the issues before releasing.${NC}"
   exit 1
