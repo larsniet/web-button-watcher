@@ -119,11 +119,22 @@ jobs:
               pathex=[],
               binaries=[],
               datas=[('LICENSE', '.'), ('resources', 'resources')],
-              hiddenimports=[],
+              hiddenimports=[
+                  'PyQt6.QtCore', 
+                  'PyQt6.QtWidgets', 
+                  'PyQt6.QtGui',
+                  'PyQt6.sip',
+                  'PyQt6.QtNetwork',
+                  'PyQt6.QtWebEngineCore', 
+                  'PyQt6.QtWebEngineWidgets',
+                  'PyQt6.QtWebChannel'
+              ],
               hookspath=[],
               hooksconfig={},
               runtime_hooks=[],
-              excludes=['numpy', 'pandas', 'matplotlib', 'scipy', 'tk', 'tkinter'],
+              excludes=[],
+              win_no_prefer_redirects=False,
+              win_private_assemblies=False,
               cipher=block_cipher,
               noarchive=False,
           )
@@ -340,7 +351,7 @@ jobs:
               ['webbuttonwatcher/interface/gui.py'],
               pathex=[],
               binaries=[],
-              datas=[('LICENSE', '.'), ('resources', 'resources')],
+              datas=[('LICENSE', '.'), ('resources', '.')],
               hiddenimports=[],
               hookspath=[],
               hooksconfig={},
@@ -399,7 +410,79 @@ jobs:
           
           # Build using the spec file
           pyinstaller macOS.spec
-      
+          
+      - name: Diagnostic Check
+        run: |
+          echo "Running diagnostics on the built app..."
+          
+          # Check main directory structure
+          echo "App directory structure:"
+          find dist/WebButtonWatcher.app -type d -maxdepth 3 | sort
+          
+          # Check for the main executable
+          echo "Main executable:"
+          ls -l dist/WebButtonWatcher.app/Contents/MacOS/
+          
+          # Check Python and dependencies
+          echo "Python packages included:"
+          find dist/WebButtonWatcher.app -name "*.py" | grep -v "__pycache__" | head -20
+          
+          # Check resources
+          echo "Resources included:"
+          find dist/WebButtonWatcher.app -path "*/resources/*" | head -20
+          
+          # Check Info.plist
+          echo "Info.plist contents:"
+          cat dist/WebButtonWatcher.app/Contents/Info.plist | grep -v "^<?xml" | grep -v "<!DOCTYPE" | head -20
+          
+      - name: Add Debug Wrapper
+        run: |
+          # Save the original executable
+          cd dist/WebButtonWatcher.app/Contents/MacOS/
+          mv webbuttonwatcher webbuttonwatcher.original
+          
+          # Create a wrapper script that logs errors
+          cat > webbuttonwatcher << 'EOF'
+          #!/bin/bash
+          
+          # Create a log directory in the user's home directory
+          LOG_DIR="$HOME/WebButtonWatcher_Logs"
+          mkdir -p "$LOG_DIR"
+          LOG_FILE="$LOG_DIR/startup.log"
+          
+          # Get the directory where this script is located
+          SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+          
+          # Log basic info
+          echo "====== WebButtonWatcher Debug Log ======" > "$LOG_FILE"
+          echo "Timestamp: $(date)" >> "$LOG_FILE"
+          echo "Working Directory: $(pwd)" >> "$LOG_FILE"
+          echo "Script Directory: $SCRIPT_DIR" >> "$LOG_FILE"
+          echo "Environment:" >> "$LOG_FILE"
+          env | sort >> "$LOG_FILE"
+          
+          # Run the original executable with stderr redirected to the log file
+          echo "Starting application..." >> "$LOG_FILE"
+          "$SCRIPT_DIR/webbuttonwatcher.original" "$@" 2>> "$LOG_FILE"
+          
+          # Log the exit code
+          EXIT_CODE=$?
+          echo "Application exited with code: $EXIT_CODE" >> "$LOG_FILE"
+          
+          # If the exit code is non-zero, show an error message using osascript
+          if [ $EXIT_CODE -ne 0 ]; then
+            osascript -e "display dialog \"WebButtonWatcher exited with error code $EXIT_CODE. See log file at $LOG_FILE for details.\" buttons {\"OK\"} default button \"OK\" with icon stop with title \"WebButtonWatcher Error\""
+          fi
+          
+          exit $EXIT_CODE
+          EOF
+          
+          # Make the wrapper script executable
+          chmod +x webbuttonwatcher
+          
+          # Go back to the original directory
+          cd ../../../../
+          
       - name: Setup Code Signing
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
@@ -483,9 +566,6 @@ jobs:
           echo '    <key>com.apple.security.cs.disable-library-validation</key>' >> entitlements.plist
           echo '    <true/>' >> entitlements.plist
           echo '    <key>com.apple.security.cs.disable-executable-page-protection</key>' >> entitlements.plist
-          echo '    <true/>' >> entitlements.plist
-          # Add network access entitlement for WebButtonWatcher to connect to websites
-          echo '    <key>com.apple.security.network.client</key>' >> entitlements.plist
           echo '    <true/>' >> entitlements.plist
           # Only add the entitlement for user-selected files
           echo '    <key>com.apple.security.files.user-selected.read-write</key>' >> entitlements.plist
