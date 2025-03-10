@@ -28,5 +28,11 @@ jobs:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
+        # Clean any existing dist directory to avoid uploading PyInstaller artifacts
+        rm -rf dist/
+        
+        # Build source and wheel distributions
         python -m build
-        twine upload dist/* 
+        
+        # Only upload whl and tar.gz files (standard Python package formats)
+        twine upload dist/*.whl dist/*.tar.gz 
